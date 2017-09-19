@@ -159,7 +159,8 @@ enum
   PROP_CLOCK_RATE,
   PROP_TIMESTAMP,
   PROP_SEQNUM,
-  PROP_REDUNDANCY
+  PROP_REDUNDANCY,
+  PROP_PTIME
 };
 
 static GstStaticPadTemplate gst_rtp_dtmf_src_template =
@@ -263,6 +264,11 @@ gst_rtp_dtmf_src_class_init (GstRTPDTMFSrcClass * klass)
           "Number of packets to send to indicate start and stop dtmf events",
           MIN_PACKET_REDUNDANCY, MAX_PACKET_REDUNDANCY,
           DEFAULT_PACKET_REDUNDANCY,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (G_OBJECT_CLASS (klass), PROP_PTIME,
+      g_param_spec_uint ("ptime", "ptime",
+          "The ptime at which to generate the dtmf packets",
+          0, G_MAXUINT, DEFAULT_PTIME,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gstelement_class->change_state =
@@ -459,6 +465,9 @@ gst_rtp_dtmf_src_set_property (GObject * object, guint prop_id,
     case PROP_REDUNDANCY:
       dtmfsrc->packet_redundancy = g_value_get_uint (value);
       break;
+    case PROP_PTIME:
+      dtmfsrc->ptime = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -497,6 +506,9 @@ gst_rtp_dtmf_src_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_REDUNDANCY:
       g_value_set_uint (value, dtmfsrc->packet_redundancy);
+      break;
+    case PROP_PTIME:
+      g_value_set_uint (value, dtmfsrc->ptime);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
