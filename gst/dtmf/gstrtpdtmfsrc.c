@@ -135,6 +135,12 @@
 #define DEFAULT_SEQNUM_OFFSET    -1
 #define DEFAULT_CLOCK_RATE       8000
 
+//SIX-1909 ru-bu 80 -> 800ms minimum tone length
+#ifdef MIN_PULSE_DURATION
+#undef MIN_PULSE_DURATION
+#define MIN_PULSE_DURATION 80
+#endif
+
 #define DEFAULT_PACKET_REDUNDANCY 1
 #define MIN_PACKET_REDUNDANCY 1
 #define MAX_PACKET_REDUNDANCY 5
@@ -730,7 +736,9 @@ gst_rtp_dtmf_src_create (GstBaseSrc * basesrc, guint64 offset,
           dtmfsrc->first_packet = TRUE;
           dtmfsrc->last_packet = FALSE;
           /* Set the redundancy on the first packet */
-          dtmfsrc->redundancy_count = dtmfsrc->packet_redundancy;
+          // no redundancy on first packet SIX-1909 ru-bu
+          //dtmfsrc->redundancy_count = dtmfsrc->packet_redundancy;
+          dtmfsrc->redundancy_count = 0;
           if (!gst_rtp_dtmf_prepare_timestamps (dtmfsrc))
             goto no_clock;
 
