@@ -42,8 +42,6 @@ G_BEGIN_DECLS
 typedef struct _GstRTPDTMFSrc GstRTPDTMFSrc;
 typedef struct _GstRTPDTMFSrcClass GstRTPDTMFSrcClass;
 
-
-
 enum _GstRTPDTMFEventType
 {
   RTP_DTMF_EVENT_TYPE_START,
@@ -69,7 +67,7 @@ typedef struct _GstRTPDTMFSrcEvent GstRTPDTMFSrcEvent;
  */
 struct _GstRTPDTMFSrc
 {
-  /*< private >*/
+  /*< private > */
   GstBaseSrc basesrc;
 
   GAsyncQueue *event_queue;
@@ -99,6 +97,7 @@ struct _GstRTPDTMFSrc
 
   gboolean dirty;
   guint16 redundancy_count;
+  guint16 maxduration;
 };
 
 struct _GstRTPDTMFSrcClass
@@ -109,7 +108,6 @@ struct _GstRTPDTMFSrcClass
 GType gst_rtp_dtmf_src_get_type (void);
 
 gboolean gst_rtp_dtmf_src_plugin_init (GstPlugin * plugin);
-
 
 G_END_DECLS
 #endif /* __GST_RTP_DTMF_SRC_H__ */
