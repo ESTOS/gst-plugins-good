@@ -131,7 +131,7 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
 #define UDP_DEFAULT_URI                 "udp://"UDP_DEFAULT_MULTICAST_GROUP":"G_STRINGIFY(UDP_DEFAULT_PORT)
 #define UDP_DEFAULT_CAPS                NULL
 #define UDP_DEFAULT_SOCKET              NULL
-#define UDP_DEFAULT_BUFFER_SIZE		0
+#define UDP_DEFAULT_BUFFER_SIZE	        0
 #define UDP_DEFAULT_TIMEOUT             0
 #define UDP_DEFAULT_SKIP_FIRST_BYTES	0
 #define UDP_DEFAULT_CLOSE_SOCKET       TRUE
@@ -139,6 +139,8 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
 #define UDP_DEFAULT_AUTO_MULTICAST     TRUE
 #define UDP_DEFAULT_REUSE              TRUE
 #define UDP_DEFAULT_LOOP               TRUE
+#define UDP_DEFAULT_REMOTE_ADDRESS     NULL
+#define UDP_DEFAULT_REMOTE_PORT        0
 
 enum
 {
@@ -158,10 +160,14 @@ enum
   PROP_AUTO_MULTICAST,
   PROP_REUSE,
   PROP_ADDRESS,
-  PROP_LOOP
+  PROP_LOOP,
+  PROP_REMOTE_ADDRESS,
+  PROP_REMOTE_PORT
 };
 
 static void gst_udpsrc_uri_handler_init (gpointer g_iface, gpointer iface_data);
+static gboolean gst_udpsrc_is_sender_permitted (GstUDPSrc * src,
+    GSocketAddress * saddr);
 
 static GstCaps *gst_udpsrc_getcaps (GstBaseSrc * src, GstCaps * filter);
 static GstFlowReturn gst_udpsrc_create (GstPushSrc * psrc, GstBuffer ** buf);
@@ -273,6 +279,15 @@ gst_udpsrc_class_init (GstUDPSrcClass * klass)
           "Used for setting the multicast loop parameter. TRUE = enable,"
           " FALSE = disable", UDP_DEFAULT_LOOP,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_REMOTE_ADDRESS,
+      g_param_spec_string ("remote-address", "RemoteAddress",
+          "Address for permitted remote Address. (NULL == all permitted)",
+          UDP_DEFAULT_REMOTE_ADDRESS,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (G_OBJECT_CLASS (klass), PROP_REMOTE_PORT,
+      g_param_spec_int ("remote-port", "RemotePort",
+          "The port to receive the remote packets from", 0, G_MAXUINT16,
+          UDP_DEFAULT_REMOTE_PORT, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&src_template));
@@ -313,6 +328,8 @@ gst_udpsrc_init (GstUDPSrc * udpsrc)
   udpsrc->used_socket = UDP_DEFAULT_USED_SOCKET;
   udpsrc->reuse = UDP_DEFAULT_REUSE;
   udpsrc->loop = UDP_DEFAULT_LOOP;
+  udpsrc->remote_address = UDP_DEFAULT_REMOTE_ADDRESS;
+  udpsrc->remote_port = UDP_DEFAULT_REMOTE_PORT;
 
   /* configure basesrc to be a live source */
   gst_base_src_set_live (GST_BASE_SRC (udpsrc), TRUE);
@@ -350,6 +367,10 @@ gst_udpsrc_finalize (GObject * object)
   if (udpsrc->used_socket)
     g_object_unref (udpsrc->used_socket);
   udpsrc->used_socket = NULL;
+
+  if (udpsrc->remote_address)
+    g_free (udpsrc->remote_address);
+  udpsrc->remote_address = NULL;
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -583,6 +604,11 @@ retry:
     goto receive_error;
   }
 
+  if (saddr && !gst_udpsrc_is_sender_permitted (udpsrc, saddr)) //RTCSP-480 ru-bu
+  {
+    goto retry;
+  }
+
   /* remember maximum packet size */
   if (res > udpsrc->max_size)
     udpsrc->max_size = res;
@@ -802,6 +828,14 @@ gst_udpsrc_set_property (GObject * object, guint prop_id, const GValue * value,
     case PROP_LOOP:
       udpsrc->loop = g_value_get_boolean (value);
       break;
+    case PROP_REMOTE_ADDRESS:  //RTCSP-480 ru-bu
+      if (udpsrc->remote_address)
+        g_free (udpsrc->remote_address);
+      udpsrc->remote_address = g_value_dup_string (value);
+      break;
+    case PROP_REMOTE_PORT:     //RTCSP-480 ru-bu
+      udpsrc->remote_port = g_value_get_int (value);
+      break;
     default:
       break;
   }
@@ -858,6 +892,12 @@ gst_udpsrc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_LOOP:
       g_value_set_boolean (value, udpsrc->loop);
+      break;
+    case PROP_REMOTE_ADDRESS:
+      g_value_set_string (value, udpsrc->remote_address);
+      break;
+    case PROP_REMOTE_PORT:
+      g_value_set_int (value, udpsrc->remote_port);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1183,7 +1223,6 @@ gst_udpsrc_close (GstUDPSrc * src)
   return TRUE;
 }
 
-
 static GstStateChangeReturn
 gst_udpsrc_change_state (GstElement * element, GstStateChange transition)
 {
@@ -1226,9 +1265,6 @@ failure:
   }
 }
 
-
-
-
 /*** GSTURIHANDLER INTERFACE *************************************************/
 
 static GstURIType
@@ -1269,4 +1305,34 @@ gst_udpsrc_uri_handler_init (gpointer g_iface, gpointer iface_data)
   iface->get_protocols = gst_udpsrc_uri_get_protocols;
   iface->get_uri = gst_udpsrc_uri_get_uri;
   iface->set_uri = gst_udpsrc_uri_set_uri;
+}
+
+static gboolean
+gst_udpsrc_is_sender_permitted (GstUDPSrc * src, GSocketAddress * saddr)
+{
+  GInetAddress *addr = NULL;
+  guint16 port = 0;
+  gchar *ip = 0;
+  gboolean ret = TRUE;
+
+  if (src->remote_address == UDP_DEFAULT_REMOTE_ADDRESS ||
+      src->remote_port == UDP_DEFAULT_REMOTE_PORT)
+    return TRUE;                //no filteraddress
+
+  addr = g_inet_socket_address_get_address (G_INET_SOCKET_ADDRESS (saddr));
+  port = g_inet_socket_address_get_port (G_INET_SOCKET_ADDRESS (saddr));
+  ip = g_inet_address_to_string (addr);
+
+  GST_LOG_OBJECT (src, "RX UDP raddress:rport: %s:%d faddress:fport: %s:%d", ip,
+      port, src->remote_address, src->remote_port);
+
+  if ((g_strcmp0 (ip, src->remote_address) == 0) && (port == src->remote_port)) {
+    ret = TRUE;
+  } else {
+    ret = FALSE;
+  }
+
+  g_free (ip);
+
+  return ret;
 }
