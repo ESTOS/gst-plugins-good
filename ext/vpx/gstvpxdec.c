@@ -62,6 +62,18 @@ gst_vpx_dec_post_processing_flags_get_type (void)
     {C_FLAGS (VP8_DEBLOCK), "Deblock", "deblock"},
     {C_FLAGS (VP8_DEMACROBLOCK), "Demacroblock", "demacroblock"},
     {C_FLAGS (VP8_ADDNOISE), "Add noise", "addnoise"},
+    {C_FLAGS (VP8_DEBUG_TXT_FRAME_INFO),
+          "Print frame information",
+        "visualize-frame-info"},
+    {C_FLAGS (VP8_DEBUG_TXT_MBLK_MODES),
+          "Show macroblock mode selection overlaid on image",
+        "visualize-macroblock-modes"},
+    {C_FLAGS (VP8_DEBUG_TXT_DC_DIFF),
+          "Show dc diff for each macro block overlaid on image",
+        "visualize-dc-diff"},
+    {C_FLAGS (VP8_DEBUG_TXT_RATE_INFO),
+          "Print video rate info",
+        "visualize-rate-info"},
     {C_FLAGS (VP8_MFQE), "Multi-frame quality enhancement", "mfqe"},
     {0, NULL, NULL}
   };
@@ -482,12 +494,16 @@ gst_vpx_dec_release_buffer_cb (gpointer priv, vpx_codec_frame_buffer_t * fb)
 {
   struct Frame *frame = fb->priv;
 
+  /* We're sometimes called without a frame */
+  if (!frame)
+    return 0;
+
   GST_TRACE_OBJECT (priv, "Release buffer %p", frame->buffer);
 
-  g_assert (frame);
   gst_buffer_unmap (frame->buffer, &frame->info);
   gst_buffer_unref (frame->buffer);
   g_free (frame);
+  fb->priv = NULL;
 
   return 0;
 }

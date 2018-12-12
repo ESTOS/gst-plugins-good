@@ -73,6 +73,11 @@ struct _GstRtpBin {
   gint            max_rtcp_rtp_time_diff;
   guint32         max_dropout_time;
   guint32         max_misorder_time;
+  gboolean        rfc7273_sync;
+  guint           max_streams;
+  guint64         max_ts_offset_adjustment;
+  gint64          max_ts_offset;
+  gboolean        max_ts_offset_is_set;
 
   /* a list of session */
   GSList         *sessions;
@@ -97,11 +102,14 @@ struct _GstRtpBinClass {
 
   void        (*new_jitterbuffer)     (GstRtpBin *rtpbin, GstElement *jitterbuffer, guint session, guint32 ssrc);
 
+  void        (*new_storage)     (GstRtpBin *rtpbin, GstElement *jitterbuffer, guint session);
+
   /* action signals */
   void        (*clear_pt_map)         (GstRtpBin *rtpbin);
   void        (*reset_sync)           (GstRtpBin *rtpbin);
   GstElement* (*get_session)          (GstRtpBin *rtpbin, guint session);
   RTPSession* (*get_internal_session) (GstRtpBin *rtpbin, guint session);
+  GObject*    (*get_internal_storage) (GstRtpBin *rtpbin, guint session);
 
   /* session manager signals */
   void     (*on_new_ssrc)       (GstRtpBin *rtpbin, guint session, guint32 ssrc);
@@ -123,8 +131,13 @@ struct _GstRtpBinClass {
   GstElement* (*request_aux_sender)   (GstRtpBin *rtpbin, guint session);
   GstElement* (*request_aux_receiver) (GstRtpBin *rtpbin, guint session);
 
+  GstElement* (*request_fec_encoder)  (GstRtpBin *rtpbin, guint session);
+  GstElement* (*request_fec_decoder)  (GstRtpBin *rtpbin, guint session);
+
   void     (*on_new_sender_ssrc)      (GstRtpBin *rtpbin, guint session, guint32 ssrc);
   void     (*on_sender_ssrc_active)   (GstRtpBin *rtpbin, guint session, guint32 ssrc);
+
+  guint    (*on_bundled_ssrc)         (GstRtpBin *rtpbin, guint ssrc);
 };
 
 GType gst_rtp_bin_get_type (void);

@@ -87,10 +87,10 @@ gst_rtp_mpa_pay_class_init (GstRtpMPAPayClass * klass)
 
   gstelement_class->change_state = gst_rtp_mpa_pay_change_state;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_mpa_pay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_mpa_pay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_mpa_pay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_mpa_pay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP MPEG audio payloader", "Codec/Payloader/Network/RTP",
@@ -243,8 +243,7 @@ gst_rtp_mpa_pay_flush (GstRtpMPAPay * rtpmpapay)
     gst_rtp_buffer_unmap (&rtp);
 
     paybuf = gst_adapter_take_buffer_fast (rtpmpapay->adapter, payload_len);
-    gst_rtp_copy_meta (GST_ELEMENT_CAST (rtpmpapay), outbuf, paybuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_copy_audio_meta (rtpmpapay, outbuf, paybuf);
     outbuf = gst_buffer_append (outbuf, paybuf);
 
     GST_BUFFER_PTS (outbuf) = rtpmpapay->first_ts;

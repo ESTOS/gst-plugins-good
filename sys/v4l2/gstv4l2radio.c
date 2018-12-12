@@ -44,9 +44,9 @@
 
 #include "gst/gst-i18n-plugin.h"
 
+#include "gstv4l2object.h"
 #include "gstv4l2tuner.h"
 #include "gstv4l2radio.h"
-#include "v4l2_calls.h"
 
 GST_DEBUG_CATEGORY_STATIC (v4l2radio_debug);
 #define GST_CAT_DEFAULT v4l2radio_debug
@@ -86,18 +86,23 @@ gst_v4l2radio_fill_channel_list (GstV4l2Radio * radio)
 
   memset (&vc, 0, sizeof (vc));
 
-  res = v4l2_ioctl (v4l2object->video_fd, VIDIOC_QUERYCAP, &vc);
+  res = v4l2object->ioctl (v4l2object->video_fd, VIDIOC_QUERYCAP, &vc);
   if (res < 0)
     goto caps_failed;
 
-  if (!(vc.capabilities & V4L2_CAP_TUNER))
+  if (vc.capabilities & V4L2_CAP_DEVICE_CAPS)
+    v4l2object->device_caps = vc.device_caps;
+  else
+    v4l2object->device_caps = vc.capabilities;
+
+  if (!(v4l2object->device_caps & V4L2_CAP_TUNER))
     goto not_a_tuner;
 
   /* getting audio input */
   memset (&vtun, 0, sizeof (vtun));
   vtun.index = 0;
 
-  res = v4l2_ioctl (v4l2object->video_fd, VIDIOC_G_TUNER, &vtun);
+  res = v4l2object->ioctl (v4l2object->video_fd, VIDIOC_G_TUNER, &vtun);
   if (res < 0)
     goto tuner_failed;
 
@@ -321,7 +326,7 @@ static void
 gst_v4l2radio_init (GstV4l2Radio * filter)
 {
   filter->v4l2object = gst_v4l2_object_new (GST_ELEMENT (filter),
-      V4L2_BUF_TYPE_VIDEO_CAPTURE, DEFAULT_PROP_DEVICE,
+      GST_OBJECT (filter), V4L2_BUF_TYPE_VIDEO_CAPTURE, DEFAULT_PROP_DEVICE,
       gst_v4l2radio_get_input, gst_v4l2radio_set_input, NULL);
 
   filter->v4l2object->frequency = DEFAULT_FREQUENCY;

@@ -1,6 +1,6 @@
 /* GStreamer
  * Copyright (C) 1999 Erik Walthinsen <omega@cse.ogi.edu>
- * Copyright (C) 2005 Edgard Lima <edgard.lima@indt.org.br>
+ * Copyright (C) 2005 Edgard Lima <edgard.lima@gmail.com>
  * Copyright (C) 2005 Zeeshan Ali <zeenix@gmail.com>
  * Copyright (C) 2008 Axis Communications <dev-gstreamer@axis.com>
  *
@@ -114,10 +114,10 @@ gst_rtp_g726_depay_class_init (GstRtpG726DepayClass * klass)
           "Force AAL2 decoding for compatibility with bad payloaders",
           DEFAULT_FORCE_AAL2, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_g726_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_g726_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_g726_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_g726_depay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP G.726 depayloader", "Codec/Depayloader/Network/RTP",
@@ -228,8 +228,7 @@ gst_rtp_g726_depay_process (GstRTPBaseDepayload * depayload, GstRTPBuffer * rtp)
     outbuf = gst_rtp_buffer_get_payload_buffer (rtp);
     if (!outbuf)
       goto bad_len;
-    gst_rtp_drop_meta (GST_ELEMENT_CAST (depay), outbuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_drop_non_audio_meta (depay, outbuf);
   } else {
     guint8 *in, *out, tmp;
     guint len;
@@ -243,8 +242,7 @@ gst_rtp_g726_depay_process (GstRTPBaseDepayload * depayload, GstRTPBuffer * rtp)
       goto bad_len;
     outbuf = gst_buffer_make_writable (outbuf);
 
-    gst_rtp_drop_meta (GST_ELEMENT_CAST (depay), outbuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_drop_non_audio_meta (depay, outbuf);
 
     gst_buffer_map (outbuf, &map, GST_MAP_WRITE);
     out = map.data;

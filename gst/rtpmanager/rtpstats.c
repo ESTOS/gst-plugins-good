@@ -22,11 +22,12 @@
 #include "rtpstats.h"
 
 void
-gst_rtp_packet_rate_ctx_reset (RTPPacketRateCtx * ctx, guint32 clock_rate)
+gst_rtp_packet_rate_ctx_reset (RTPPacketRateCtx * ctx, gint32 clock_rate)
 {
   ctx->clock_rate = clock_rate;
   ctx->probed = FALSE;
   ctx->avg_packet_rate = -1;
+  ctx->last_ts = -1;
 }
 
 guint32
@@ -35,21 +36,22 @@ gst_rtp_packet_rate_ctx_update (RTPPacketRateCtx * ctx, guint16 seqnum,
 {
   guint64 new_ts, diff_ts;
   gint diff_seqnum;
-  guint32 new_packet_rate;
+  gint32 new_packet_rate;
 
   if (ctx->clock_rate <= 0) {
     return ctx->avg_packet_rate;
   }
 
+  new_ts = ctx->last_ts;
+  gst_rtp_buffer_ext_timestamp (&new_ts, ts);
+
   if (!ctx->probed) {
     ctx->last_seqnum = seqnum;
-    ctx->last_ts = ts;
+    ctx->last_ts = new_ts;
     ctx->probed = TRUE;
     return ctx->avg_packet_rate;
   }
 
-  new_ts = ctx->last_ts;
-  gst_rtp_buffer_ext_timestamp (&new_ts, ts);
   diff_seqnum = gst_rtp_buffer_compare_seqnum (ctx->last_seqnum, seqnum);
   if (diff_seqnum <= 0 || new_ts <= ctx->last_ts) {
     return ctx->avg_packet_rate;
@@ -64,6 +66,7 @@ gst_rtp_packet_rate_ctx_update (RTPPacketRateCtx * ctx, guint16 seqnum,
    * but it will go down again slowly.
    * This is useful for bursty cases, where a lot of packets are close
    * to each other and should allow a higher reorder/dropout there.
+   * Round up the new average.
    */
   if (ctx->avg_packet_rate > new_packet_rate) {
     ctx->avg_packet_rate = (7 * ctx->avg_packet_rate + new_packet_rate + 7) / 8;

@@ -28,18 +28,7 @@
 #include "ebml-read.h"
 #include "ebml-ids.h"
 
-#include <math.h>
-
-/* NAN is supposed to be in math.h, Microsoft defines it in xmath.h
- * However, starting iwth Visual Studio 8, NAN is defined by default */
-#if defined (_MSC_VER) && _MSC_VER < 1500
-#include <xmath.h>
-#endif
-
-/* If everything goes wrong try 0.0/0.0 which should be NAN */
-#ifndef NAN
-#define NAN (0.0 / 0.0)
-#endif
+#include <gst/math-compat.h>
 
 GST_DEBUG_CATEGORY (ebmlread_debug);
 #define GST_CAT_DEFAULT ebmlread_debug
@@ -138,7 +127,7 @@ gst_ebml_peek_id_length (guint32 * _id, guint64 * _length, guint * _needed,
   /* ERRORS */
 peek_error:
   {
-    if (ret != GST_FLOW_FLUSHING)
+    if (ret != GST_FLOW_FLUSHING && ret != GST_FLOW_EOS)
       GST_WARNING_OBJECT (el, "peek failed, ret = %s", gst_flow_get_name (ret));
     else
       GST_DEBUG_OBJECT (el, "peek failed, ret = %s", gst_flow_get_name (ret));

@@ -1,5 +1,5 @@
 /* GStreamer
- * Copyright (C) <2005> Edgard Lima <edgard.lima@indt.org.br>
+ * Copyright (C) <2005> Edgard Lima <edgard.lima@gmail.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -79,14 +79,14 @@ gst_rtp_speex_depay_class_init (GstRtpSPEEXDepayClass * klass)
   gstrtpbasedepayload_class->process_rtp_packet = gst_rtp_speex_depay_process;
   gstrtpbasedepayload_class->set_caps = gst_rtp_speex_depay_setcaps;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_speex_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_speex_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_speex_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_speex_depay_sink_template);
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP Speex depayloader", "Codec/Depayloader/Network/RTP",
       "Extracts Speex audio from RTP packets",
-      "Edgard Lima <edgard.lima@indt.org.br>");
+      "Edgard Lima <edgard.lima@gmail.com>");
 }
 
 static void
@@ -212,8 +212,7 @@ gst_rtp_speex_depay_process (GstRTPBaseDepayload * depayload,
 
   if (outbuf) {
     GST_BUFFER_DURATION (outbuf) = 20 * GST_MSECOND;
-    gst_rtp_drop_meta (GST_ELEMENT_CAST (depayload), outbuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_drop_non_audio_meta (depayload, outbuf);
   }
 
   return outbuf;

@@ -45,8 +45,7 @@ gst_fake_audio_sink_class_init (GstFakeAudioSinkClass * klass)
 
   gst_element_class_set_static_metadata (gstelement_class, "Fake Audio Sink",
       "Sink/Audio", "Audio sink fake for testing", "Stefan Sauer");
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&pad_template));
+  gst_element_class_add_static_pad_template (gstelement_class, &pad_template);
 }
 
 static void
@@ -70,8 +69,7 @@ gst_fake_video_sink_class_init (GstFakeVideoSinkClass * klass)
 
   gst_element_class_set_static_metadata (gstelement_class, "Fake Video Sink",
       "Sink/Video", "Video sink fake for testing", "Stefan Sauer");
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&pad_template));
+  gst_element_class_add_static_pad_template (gstelement_class, &pad_template);
 }
 
 static void
@@ -214,8 +212,7 @@ autodetect_suite (void)
       "autodetect-test",
       "autodetect test elements",
       plugin_init,
-      VERSION, "LGPL", PACKAGE, PACKAGE_NAME,
-      "http://gstreamer.freedesktop.org");
+      VERSION, "LGPL", PACKAGE, GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN);
 
   suite_add_tcase (s, tc_chain);
   tcase_add_test (tc_chain, test_autovideosink_plugs_best);

@@ -88,10 +88,10 @@ gst_rtp_L24_depay_class_init (GstRtpL24DepayClass * klass)
   gstrtpbasedepayload_class->set_caps = gst_rtp_L24_depay_setcaps;
   gstrtpbasedepayload_class->process_rtp_packet = gst_rtp_L24_depay_process;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_L24_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_L24_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_L24_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_L24_depay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP audio depayloader", "Codec/Depayloader/Network/RTP",
@@ -230,8 +230,7 @@ gst_rtp_L24_depay_process (GstRTPBaseDepayload * depayload, GstRTPBuffer * rtp)
 
   outbuf = gst_buffer_make_writable (outbuf);
   if (outbuf) {
-    gst_rtp_drop_meta (GST_ELEMENT_CAST (rtpL24depay), outbuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_drop_non_audio_meta (rtpL24depay, outbuf);
   }
   if (rtpL24depay->order &&
       !gst_audio_buffer_reorder_channels (outbuf,

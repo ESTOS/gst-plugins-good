@@ -191,10 +191,8 @@ gst_rtp_rtx_send_class_init (GstRtpRtxSendClass * klass)
           " Number of retransmission packets sent", 0, G_MAXUINT,
           0, G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&src_factory));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&sink_factory));
+  gst_element_class_add_static_pad_template (gstelement_class, &src_factory);
+  gst_element_class_add_static_pad_template (gstelement_class, &sink_factory);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP Retransmission Sender", "Codec",
@@ -389,8 +387,8 @@ gst_rtp_rtx_buffer_new (GstRtpRtxSend * rtx, GstBuffer * buffer)
   fmtp = GPOINTER_TO_UINT (g_hash_table_lookup (rtx->rtx_pt_map,
           GUINT_TO_POINTER (gst_rtp_buffer_get_payload_type (&rtp))));
 
-  GST_DEBUG_OBJECT (rtx,
-      "retransmit seqnum: %" G_GUINT16_FORMAT ", ssrc: %" G_GUINT32_FORMAT,
+  GST_DEBUG_OBJECT (rtx, "creating rtx buffer, orig seqnum: %u, "
+      "rtx seqnum: %u, rtx ssrc: %X", gst_rtp_buffer_get_seq (&rtp),
       seqnum, ssrc);
 
   /* gst_rtp_buffer_map does not map the payload so do it now */
@@ -402,7 +400,10 @@ gst_rtp_rtx_buffer_new (GstRtpRtxSend * rtx, GstBuffer * buffer)
 
   /* copy extension if any */
   if (rtp.size[1]) {
-    mem = gst_memory_copy (rtp.map[1].memory, 0, rtp.size[1]);
+    mem = gst_allocator_alloc (NULL, rtp.size[1], NULL);
+    gst_memory_map (mem, &map, GST_MAP_WRITE);
+    memcpy (map.data, rtp.data[1], rtp.size[1]);
+    gst_memory_unmap (mem, &map);
     gst_buffer_append_memory (new_buffer, mem);
   }
 
@@ -470,8 +471,7 @@ gst_rtp_rtx_send_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
         if (!gst_structure_get_uint (s, "ssrc", &ssrc))
           ssrc = -1;
 
-        GST_DEBUG_OBJECT (rtx,
-            "request seqnum: %" G_GUINT32_FORMAT ", ssrc: %" G_GUINT32_FORMAT,
+        GST_DEBUG_OBJECT (rtx, "got rtx request for seqnum: %u, ssrc: %X",
             seqnum, ssrc);
 
         GST_OBJECT_LOCK (rtx);
@@ -491,7 +491,7 @@ gst_rtp_rtx_send_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
               (GCompareDataFunc) buffer_queue_items_cmp, NULL);
           if (iter) {
             BufferQueueItem *item = g_sequence_get (iter);
-            GST_DEBUG_OBJECT (rtx, "found %" G_GUINT16_FORMAT, item->seqnum);
+            GST_LOG_OBJECT (rtx, "found %u", item->seqnum);
             rtx_buf = gst_rtp_rtx_buffer_new (rtx, item->buffer);
           }
         }
@@ -510,7 +510,7 @@ gst_rtp_rtx_send_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
         if (!gst_structure_get_uint (s, "ssrc", &ssrc))
           ssrc = -1;
 
-        GST_DEBUG_OBJECT (rtx, "collision ssrc: %" G_GUINT32_FORMAT, ssrc);
+        GST_DEBUG_OBJECT (rtx, "got ssrc collision, ssrc: %X", ssrc);
 
         GST_OBJECT_LOCK (rtx);
 
@@ -617,9 +617,8 @@ gst_rtp_rtx_send_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
         GST_WARNING_OBJECT (rtx, "Payload %d not in rtx-pt-map", payload);
 
       GST_DEBUG_OBJECT (rtx,
-          "got caps for payload: %d->%d, ssrc: %u->%" G_GUINT32_FORMAT ": %"
-          GST_PTR_FORMAT, payload, GPOINTER_TO_INT (rtx_payload), ssrc,
-          data->rtx_ssrc, caps);
+          "got caps for payload: %d->%d, ssrc: %u->%u : %" GST_PTR_FORMAT,
+          payload, GPOINTER_TO_INT (rtx_payload), ssrc, data->rtx_ssrc, caps);
 
       gst_structure_get_int (s, "clock-rate", &data->clock_rate);
 
@@ -696,9 +695,8 @@ process_buffer (GstRtpRtxSend * rtx, GstBuffer * buffer)
   rtptime = gst_rtp_buffer_get_timestamp (&rtp);
   gst_rtp_buffer_unmap (&rtp);
 
-  GST_LOG_OBJECT (rtx,
-      "Processing buffer seqnum: %" G_GUINT16_FORMAT ", ssrc: %"
-      G_GUINT32_FORMAT, seqnum, ssrc);
+  GST_TRACE_OBJECT (rtx, "Processing buffer seqnum: %u, ssrc: %X", seqnum,
+      ssrc);
 
   /* do not store the buffer if it's payload type is unknown */
   if (g_hash_table_contains (rtx->rtx_pt_map, GUINT_TO_POINTER (payload_type))) {
@@ -769,11 +767,12 @@ gst_rtp_rtx_send_src_loop (GstRtpRtxSend * rtx)
     GST_LOG_OBJECT (rtx, "pushing rtx buffer %p", data->object);
 
     if (G_LIKELY (GST_IS_BUFFER (data->object))) {
-      gst_pad_push (rtx->srcpad, GST_BUFFER (data->object));
-
       GST_OBJECT_LOCK (rtx);
+      /* Update statistics just before pushing. */
       rtx->num_rtx_packets++;
       GST_OBJECT_UNLOCK (rtx);
+
+      gst_pad_push (rtx->srcpad, GST_BUFFER (data->object));
     } else if (GST_IS_EVENT (data->object)) {
       gst_pad_push_event (rtx->srcpad, GST_EVENT (data->object));
 

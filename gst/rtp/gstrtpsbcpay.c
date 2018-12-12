@@ -157,6 +157,8 @@ gst_rtp_sbc_pay_set_caps (GstRTPBasePayload * payload, GstCaps * caps)
       bitpool, channel_mode);
 
   sbcpay->frame_length = frame_len;
+  sbcpay->frame_duration = ((blocks * subbands) * GST_SECOND) / rate;
+  sbcpay->last_timestamp = GST_CLOCK_TIME_NONE;
 
   gst_rtp_base_payload_set_options (payload, "audio", TRUE, "SBC", rate);
 
@@ -176,49 +178,58 @@ gst_rtp_sbc_pay_flush_buffers (GstRtpSBCPay * sbcpay)
   guint frame_count;
   guint payload_length;
   struct rtp_payload *payload;
+  GstFlowReturn res;
 
   if (sbcpay->frame_length == 0) {
     GST_ERROR_OBJECT (sbcpay, "Frame length is 0");
     return GST_FLOW_ERROR;
   }
 
-  available = gst_adapter_available (sbcpay->adapter);
+  do {
+    available = gst_adapter_available (sbcpay->adapter);
 
-  max_payload =
-      gst_rtp_buffer_calc_payload_len (GST_RTP_BASE_PAYLOAD_MTU (sbcpay) -
-      RTP_SBC_PAYLOAD_HEADER_SIZE, 0, 0);
+    max_payload =
+        gst_rtp_buffer_calc_payload_len (GST_RTP_BASE_PAYLOAD_MTU (sbcpay) -
+        RTP_SBC_PAYLOAD_HEADER_SIZE, 0, 0);
 
-  max_payload = MIN (max_payload, available);
-  frame_count = max_payload / sbcpay->frame_length;
-  payload_length = frame_count * sbcpay->frame_length;
-  if (payload_length == 0)      /* Nothing to send */
-    return GST_FLOW_OK;
+    max_payload = MIN (max_payload, available);
+    frame_count = max_payload / sbcpay->frame_length;
+    payload_length = frame_count * sbcpay->frame_length;
+    if (payload_length == 0)    /* Nothing to send */
+      return GST_FLOW_OK;
 
-  outbuf = gst_rtp_buffer_new_allocate (RTP_SBC_PAYLOAD_HEADER_SIZE, 0, 0);
+    outbuf = gst_rtp_buffer_new_allocate (RTP_SBC_PAYLOAD_HEADER_SIZE, 0, 0);
 
-  /* get payload */
-  gst_rtp_buffer_map (outbuf, GST_MAP_WRITE, &rtp);
+    /* get payload */
+    gst_rtp_buffer_map (outbuf, GST_MAP_WRITE, &rtp);
 
-  gst_rtp_buffer_set_payload_type (&rtp, GST_RTP_BASE_PAYLOAD_PT (sbcpay));
+    gst_rtp_buffer_set_payload_type (&rtp, GST_RTP_BASE_PAYLOAD_PT (sbcpay));
 
-  /* write header and copy data into payload */
-  payload_data = gst_rtp_buffer_get_payload (&rtp);
-  payload = (struct rtp_payload *) payload_data;
-  memset (payload, 0, sizeof (struct rtp_payload));
-  payload->frame_count = frame_count;
+    /* write header and copy data into payload */
+    payload_data = gst_rtp_buffer_get_payload (&rtp);
+    payload = (struct rtp_payload *) payload_data;
+    memset (payload, 0, sizeof (struct rtp_payload));
+    payload->frame_count = frame_count;
 
-  gst_rtp_buffer_unmap (&rtp);
+    gst_rtp_buffer_unmap (&rtp);
 
-  paybuf = gst_adapter_take_buffer_fast (sbcpay->adapter, payload_length);
-  gst_rtp_copy_meta (GST_ELEMENT_CAST (sbcpay), outbuf, paybuf,
-      g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
-  outbuf = gst_buffer_append (outbuf, paybuf);
+    paybuf = gst_adapter_take_buffer_fast (sbcpay->adapter, payload_length);
+    gst_rtp_copy_audio_meta (sbcpay, outbuf, paybuf);
+    outbuf = gst_buffer_append (outbuf, paybuf);
 
-  /* FIXME: what about duration? */
-  GST_BUFFER_PTS (outbuf) = sbcpay->timestamp;
-  GST_DEBUG_OBJECT (sbcpay, "Pushing %d bytes", payload_length);
+    GST_BUFFER_PTS (outbuf) = sbcpay->last_timestamp;
+    GST_BUFFER_DURATION (outbuf) = frame_count * sbcpay->frame_duration;
+    GST_DEBUG_OBJECT (sbcpay, "Pushing %d bytes: %" GST_TIME_FORMAT,
+        payload_length, GST_TIME_ARGS (GST_BUFFER_PTS (outbuf)));
 
-  return gst_rtp_base_payload_push (GST_RTP_BASE_PAYLOAD (sbcpay), outbuf);
+    sbcpay->last_timestamp += frame_count * sbcpay->frame_duration;
+
+    res = gst_rtp_base_payload_push (GST_RTP_BASE_PAYLOAD (sbcpay), outbuf);
+
+    /* try to send another RTP buffer if available data exceeds MTU size */
+  } while (res == GST_FLOW_OK);
+
+  return res;
 }
 
 static GstFlowReturn
@@ -230,7 +241,19 @@ gst_rtp_sbc_pay_handle_buffer (GstRTPBasePayload * payload, GstBuffer * buffer)
   /* FIXME check for negotiation */
 
   sbcpay = GST_RTP_SBC_PAY (payload);
-  sbcpay->timestamp = GST_BUFFER_PTS (buffer);
+
+  if (GST_BUFFER_IS_DISCONT (buffer)) {
+    /* Try to flush whatever's left */
+    gst_rtp_sbc_pay_flush_buffers (sbcpay);
+    /* Drop the rest */
+    gst_adapter_flush (sbcpay->adapter,
+        gst_adapter_available (sbcpay->adapter));
+    /* Reset timestamps */
+    sbcpay->last_timestamp = GST_CLOCK_TIME_NONE;
+  }
+
+  if (sbcpay->last_timestamp == GST_CLOCK_TIME_NONE)
+    sbcpay->last_timestamp = GST_BUFFER_PTS (buffer);
 
   gst_adapter_push (sbcpay->adapter, buffer);
 
@@ -293,10 +316,10 @@ gst_rtp_sbc_pay_class_init (GstRtpSBCPayClass * klass)
           "(-1 for maximum allowed by the mtu)",
           -1, G_MAXINT, DEFAULT_MIN_FRAMES, G_PARAM_READWRITE));
 
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&gst_rtp_sbc_pay_sink_factory));
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&gst_rtp_sbc_pay_src_factory));
+  gst_element_class_add_static_pad_template (element_class,
+      &gst_rtp_sbc_pay_sink_factory);
+  gst_element_class_add_static_pad_template (element_class,
+      &gst_rtp_sbc_pay_src_factory);
 
   gst_element_class_set_static_metadata (element_class, "RTP packet payloader",
       "Codec/Payloader/Network", "Payload SBC audio as RTP packets",
@@ -347,7 +370,7 @@ gst_rtp_sbc_pay_init (GstRtpSBCPay * self)
 {
   self->adapter = gst_adapter_new ();
   self->frame_length = 0;
-  self->timestamp = 0;
+  self->last_timestamp = GST_CLOCK_TIME_NONE;
 
   self->min_frames = DEFAULT_MIN_FRAMES;
 }

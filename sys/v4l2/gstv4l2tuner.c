@@ -1,7 +1,7 @@
 /* GStreamer
  *
  * Copyright (C) 2003 Ronald Bultje <rbultje@ronald.bitfreak.net>
- *               2006 Edgard Lima <edgard.lima@indt.org.br>
+ *               2006 Edgard Lima <edgard.lima@gmail.com>
  *
  * gstv4l2tuner.c: tuner interface implementation for V4L2
  *
@@ -27,9 +27,9 @@
 
 #include <gst/gst.h>
 
+#include "gstv4l2object.h"
 #include "gstv4l2tuner.h"
 #include "gstv4l2object.h"
-#include "v4l2_calls.h"
 
 G_DEFINE_TYPE (GstV4l2TunerChannel, gst_v4l2_tuner_channel,
     GST_TYPE_TUNER_CHANNEL);

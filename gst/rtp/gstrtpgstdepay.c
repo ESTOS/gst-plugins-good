@@ -27,6 +27,8 @@
 #include "gstrtpgstdepay.h"
 #include "gstrtputils.h"
 
+#include <gst/video/video.h>
+
 GST_DEBUG_CATEGORY_STATIC (rtpgstdepay_debug);
 #define GST_CAT_DEFAULT (rtpgstdepay_debug)
 
@@ -80,10 +82,10 @@ gst_rtp_gst_depay_class_init (GstRtpGSTDepayClass * klass)
 
   gstelement_class->change_state = gst_rtp_gst_depay_change_state;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_gst_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_gst_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_gst_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_gst_depay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "GStreamer depayloader", "Codec/Depayloader/Network",
@@ -556,9 +558,13 @@ no_event:
   }
 missing_caps:
   {
-    GST_ELEMENT_WARNING (rtpgstdepay, STREAM, DECODE,
-        ("Missing caps %u.", CV), (NULL));
+    GST_INFO_OBJECT (rtpgstdepay, "No caps received yet %u", CV);
     gst_buffer_unref (outbuf);
+
+    gst_pad_push_event (GST_RTP_BASE_DEPAYLOAD_SINKPAD (rtpgstdepay),
+        gst_video_event_new_upstream_force_key_unit (GST_CLOCK_TIME_NONE,
+            TRUE, 0));
+
     return NULL;
   }
 }

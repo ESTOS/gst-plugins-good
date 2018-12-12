@@ -74,10 +74,10 @@ gst_rtp_bv_depay_class_init (GstRTPBVDepayClass * klass)
   gstelement_class = (GstElementClass *) klass;
   gstrtpbasedepayload_class = (GstRTPBaseDepayloadClass *) klass;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_bv_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_bv_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_bv_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_bv_depay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP BroadcomVoice depayloader", "Codec/Depayloader/Network/RTP",
@@ -176,8 +176,7 @@ gst_rtp_bv_depay_process (GstRTPBaseDepayload * depayload, GstRTPBuffer * rtp)
   }
 
   if (outbuf) {
-    gst_rtp_drop_meta (GST_ELEMENT_CAST (depayload), outbuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_drop_non_audio_meta (depayload, outbuf);
   }
 
   return outbuf;

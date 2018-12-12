@@ -261,10 +261,10 @@ gst_rtp_jpeg_pay_class_init (GstRtpJPEGPayClass * klass)
   gobject_class->set_property = gst_rtp_jpeg_pay_set_property;
   gobject_class->get_property = gst_rtp_jpeg_pay_get_property;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_jpeg_pay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_jpeg_pay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_jpeg_pay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_jpeg_pay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class, "RTP JPEG payloader",
       "Codec/Payloader/Network/RTP",
@@ -895,8 +895,7 @@ gst_rtp_jpeg_pay_handle_buffer (GstRTPBasePayload * basepayload,
         jpeg_header_size + offset, payload_size);
 
     /* join memory parts */
-    gst_rtp_copy_meta (GST_ELEMENT_CAST (pay), outbuf, paybuf,
-        g_quark_from_static_string (GST_META_TAG_VIDEO_STR));
+    gst_rtp_copy_video_meta (pay, outbuf, paybuf);
     outbuf = gst_buffer_append (outbuf, paybuf);
 
     GST_BUFFER_PTS (outbuf) = timestamp;

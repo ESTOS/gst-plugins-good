@@ -37,62 +37,64 @@ G_BEGIN_DECLS
 #define GST_IS_UDPSRC_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_UDPSRC))
 #define GST_UDPSRC_CAST(obj) ((GstUDPSrc *)(obj))
+
 typedef struct _GstUDPSrc GstUDPSrc;
 typedef struct _GstUDPSrcClass GstUDPSrcClass;
 
-struct _GstUDPSrc
-{
+struct _GstUDPSrc {
   GstPushSrc parent;
 
   /* properties */
-  gchar *address;
-  gint port;
-  gchar *multi_iface;
-  gint ttl;
-  GstCaps *caps;
-  gint buffer_size;
-  guint64 timeout;
-  gint skip_first_bytes;
-  GSocket *socket;
-  gboolean close_socket;
-  gboolean auto_multicast;
-  gboolean reuse;
-  gboolean loop;
+  gchar     *address;
+  gint       port;
+  gchar     *multi_iface;
+  gint       ttl;
+  GstCaps   *caps;
+  gint       buffer_size;
+  guint64    timeout;
+  gint       skip_first_bytes;
+  GSocket   *socket;
+  gboolean   close_socket;
+  gboolean   auto_multicast;
+  gboolean   reuse;
+  gboolean   loop;
+  gboolean   retrieve_sender_address;
 
   /* stats */
-  guint max_size;
+  guint      max_size;
 
   /* our sockets */
-  GSocket *used_socket;
+  GSocket   *used_socket;
   GInetSocketAddress *addr;
-  gboolean external_socket;
+  gboolean   external_socket;
 
-  gboolean made_cancel_fd;
+  gboolean   made_cancel_fd;
   GCancellable *cancellable;
 
   /* memory management */
   GstAllocator *allocator;
   GstAllocationParams params;
 
-  GstMemory *mem;
-  GstMapInfo map;
-  GstMemory *mem_max;
-  GstMapInfo map_max;
+  GstMemory   *mem;
+  GstMapInfo   map;
+  GstMemory   *mem_max;
+  GstMapInfo   map_max;
   GInputVector vec[2];
 
-  gchar *uri;
+  gchar     *uri;
 
   /* permitted remote address */
-  gchar *remote_address;
-  gint remote_port;
+  gchar     *remote_address;
+  gint      remote_port;
 };
 
-struct _GstUDPSrcClass
-{
+struct _GstUDPSrcClass {
   GstPushSrcClass parent_class;
 };
 
-GType gst_udpsrc_get_type (void);
+GType gst_udpsrc_get_type(void);
 
 G_END_DECLS
+
+
 #endif /* __GST_UDPSRC_H__ */

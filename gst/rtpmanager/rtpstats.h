@@ -142,6 +142,8 @@ typedef struct {
   guint        recv_pli_count;
   guint        sent_fir_count;
   guint        recv_fir_count;
+  guint        sent_nack_count;
+  guint        recv_nack_count;
 
   /* when we received stuff */
   GstClockTime prev_rtptime;
@@ -205,13 +207,13 @@ typedef struct {
  */
 typedef struct {
   gboolean probed;
-  guint32 clock_rate;
+  gint32 clock_rate;
   guint16 last_seqnum;
   guint64 last_ts;
   guint32 avg_packet_rate;
 } RTPPacketRateCtx;
 
-void gst_rtp_packet_rate_ctx_reset (RTPPacketRateCtx * ctx, guint32 clock_rate);
+void gst_rtp_packet_rate_ctx_reset (RTPPacketRateCtx * ctx, gint32 clock_rate);
 guint32 gst_rtp_packet_rate_ctx_update (RTPPacketRateCtx *ctx, guint16 seqnum, guint32 ts);
 guint32 gst_rtp_packet_rate_ctx_get (RTPPacketRateCtx *ctx);
 guint32 gst_rtp_packet_rate_ctx_get_max_dropout (RTPPacketRateCtx *ctx, gint32 time_ms);

@@ -98,10 +98,10 @@ gst_rtp_qcelp_depay_class_init (GstRtpQCELPDepayClass * klass)
   gstrtpbasedepayload_class->process_rtp_packet = gst_rtp_qcelp_depay_process;
   gstrtpbasedepayload_class->set_caps = gst_rtp_qcelp_depay_setcaps;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_qcelp_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_qcelp_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_qcelp_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_qcelp_depay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP QCELP depayloader", "Codec/Depayloader/Network/RTP",
@@ -357,8 +357,7 @@ gst_rtp_qcelp_depay_process (GstRTPBaseDepayload * depayload,
     GST_BUFFER_PTS (outbuf) = timestamp;
     GST_BUFFER_DURATION (outbuf) = FRAME_DURATION;
 
-    gst_rtp_drop_meta (GST_ELEMENT_CAST (depayload), outbuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_drop_non_audio_meta (depayload, outbuf);
 
     if (!depay->interleaved || index == 0) {
       /* not interleaved or first frame in packet, just push */

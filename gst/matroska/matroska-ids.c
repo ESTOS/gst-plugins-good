@@ -59,8 +59,15 @@ gst_matroska_track_init_video_context (GstMatroskaTrackContext ** p_context)
   video_context->fourcc = 0;
   video_context->default_fps = 0.0;
   video_context->earliest_time = GST_CLOCK_TIME_NONE;
+  video_context->dirac_unit = NULL;
+  video_context->earliest_time = GST_CLOCK_TIME_NONE;
   video_context->multiview_mode = GST_VIDEO_MULTIVIEW_MODE_NONE;
   video_context->multiview_flags = GST_VIDEO_MULTIVIEW_FLAGS_NONE;
+  video_context->colorimetry.range = GST_VIDEO_COLOR_RANGE_UNKNOWN;
+  video_context->colorimetry.matrix = GST_VIDEO_COLOR_MATRIX_UNKNOWN;
+  video_context->colorimetry.transfer = GST_VIDEO_TRANSFER_UNKNOWN;
+  video_context->colorimetry.primaries = GST_VIDEO_COLOR_PRIMARIES_UNKNOWN;
+
 
   return TRUE;
 }
@@ -88,6 +95,8 @@ gst_matroska_track_init_audio_context (GstMatroskaTrackContext ** p_context)
   (*p_context)->type = GST_MATROSKA_TRACK_TYPE_AUDIO;
   audio_context->channels = 1;
   audio_context->samplerate = 8000;
+  audio_context->bitdepth = 16;
+  audio_context->wvpk_block_index = 0;
   return TRUE;
 }
 
@@ -111,7 +120,9 @@ gst_matroska_track_init_subtitle_context (GstMatroskaTrackContext ** p_context)
   *p_context = (GstMatroskaTrackContext *) subtitle_context;
 
   (*p_context)->type = GST_MATROSKA_TRACK_TYPE_SUBTITLE;
+  subtitle_context->check_utf8 = TRUE;
   subtitle_context->invalid_utf8 = FALSE;
+  subtitle_context->check_markup = TRUE;
   subtitle_context->seen_markup_tag = FALSE;
   return TRUE;
 }
@@ -283,15 +294,18 @@ gst_matroska_parse_flac_stream_headers (gpointer codec_data,
   /* skip fLaC marker */
   off = 4;
 
-  /* FIXME: check size remaining */
-  while (off < codec_data_size) {
+  while (off < codec_data_size - 3) {
     len = GST_READ_UINT8 (pdata + off + 1) << 16;
     len |= GST_READ_UINT8 (pdata + off + 2) << 8;
     len |= GST_READ_UINT8 (pdata + off + 3);
 
     GST_DEBUG ("header packet: len=%u bytes, flags=0x%02x", len, pdata[off]);
 
-    /* FIXME: check size remaining */
+    if (off + len > codec_data_size) {
+      gst_buffer_list_unref (list);
+      return NULL;
+    }
+
     hdr = gst_buffer_new_wrapped (g_memdup (pdata + off, len + 4), len + 4);
     gst_buffer_list_add (list, hdr);
 
@@ -320,6 +334,7 @@ gst_matroska_track_free (GstMatroskaTrackContext * track)
   g_free (track->language);
   g_free (track->codec_priv);
   g_free (track->codec_state);
+  gst_caps_replace (&track->caps, NULL);
 
   if (track->encodings != NULL) {
     int i;

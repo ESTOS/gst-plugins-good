@@ -1,7 +1,7 @@
 /* GStreamer
  *
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
- *               2006 Edgard Lima <edgard.lima@indt.org.br>
+ *               2006 Edgard Lima <edgard.lima@gmail.com>
  *               2009 Texas Instruments, Inc - http://www.ti.com/
  *
  * gstv4l2bufferpool.h V4L2 buffer pool class
@@ -34,10 +34,7 @@ typedef struct _GstV4l2Meta GstV4l2Meta;
 #include "gstv4l2object.h"
 #include "gstv4l2allocator.h"
 
-GST_DEBUG_CATEGORY_EXTERN (v4l2buffer_debug);
-
 G_BEGIN_DECLS
-
 
 #define GST_TYPE_V4L2_BUFFER_POOL      (gst_v4l2_buffer_pool_get_type())
 #define GST_IS_V4L2_BUFFER_POOL(obj)   (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GST_TYPE_V4L2_BUFFER_POOL))
@@ -109,6 +106,8 @@ void                gst_v4l2_buffer_pool_set_other_pool (GstV4l2BufferPool * poo
                                                          GstBufferPool * other_pool);
 void                gst_v4l2_buffer_pool_copy_at_threshold (GstV4l2BufferPool * pool,
                                                             gboolean copy);
+
+gboolean            gst_v4l2_buffer_pool_flush   (GstBufferPool *pool);
 
 G_END_DECLS
 

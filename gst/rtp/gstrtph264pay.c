@@ -120,7 +120,7 @@ gst_rtp_h264_pay_class_init (GstRtpH264PayClass * klass)
           "The base64 sprop-parameter-sets to set in out caps (set to NULL to "
           "extract from stream)",
           DEFAULT_SPROP_PARAMETER_SETS,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_DEPRECATED));
 
   g_object_class_install_property (G_OBJECT_CLASS (klass),
       PROP_CONFIG_INTERVAL,
@@ -135,10 +135,10 @@ gst_rtp_h264_pay_class_init (GstRtpH264PayClass * klass)
 
   gobject_class->finalize = gst_rtp_h264_pay_finalize;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_h264_pay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_h264_pay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_h264_pay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_h264_pay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class, "RTP H264 payloader",
       "Codec/Payloader/Network/RTP",
@@ -340,6 +340,13 @@ gst_rtp_h264_pay_getcaps (GstRTPBasePayload * payload, GstPad * pad,
   caps = icaps;
 
 done:
+  if (filter) {
+    GST_DEBUG_OBJECT (payload, "Intersect %" GST_PTR_FORMAT " and filter %"
+        GST_PTR_FORMAT, caps, filter);
+    icaps = gst_caps_intersect_full (filter, caps, GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref (caps);
+    caps = icaps;
+  }
 
   gst_caps_unref (template_caps);
   gst_caps_unref (allowed_caps);
@@ -694,6 +701,10 @@ gst_rtp_h264_pay_decode_nal (GstRtpH264Pay * payloader,
   if (SPS_TYPE_ID == type || PPS_TYPE_ID == type) {
     GstBuffer *nal;
 
+    /* trailing 0x0 are not part of the SPS/PPS */
+    while (size > 0 && data[size - 1] == 0x0)
+      size--;
+
     /* encode the entire SPS NAL in base64 */
     GST_DEBUG ("Found %s %x %x %x Len=%u", type == SPS_TYPE_ID ? "SPS" : "PPS",
         (header >> 7), (header >> 5) & 3, type, size);
@@ -706,7 +717,9 @@ gst_rtp_h264_pay_decode_nal (GstRtpH264Pay * payloader,
 
     /* remember when we last saw SPS */
     if (updated && pts != -1)
-      payloader->last_spspps = pts;
+      payloader->last_spspps =
+          gst_segment_to_running_time (&GST_RTP_BASE_PAYLOAD_CAST
+          (payloader)->segment, GST_FORMAT_TIME, pts);
   } else {
     GST_DEBUG ("NAL: %x %x %x Len = %u", (header >> 7),
         (header >> 5) & 3, type, size);
@@ -758,7 +771,9 @@ gst_rtp_h264_pay_send_sps_pps (GstRTPBasePayload * basepayload,
   }
 
   if (pts != -1 && sent_all_sps_pps)
-    rtph264pay->last_spspps = pts;
+    rtph264pay->last_spspps =
+        gst_segment_to_running_time (&basepayload->segment, GST_FORMAT_TIME,
+        pts);
 
   return ret;
 }
@@ -805,14 +820,18 @@ gst_rtp_h264_pay_payload_nal (GstRTPBasePayload * basepayload,
   if (nalType == IDR_TYPE_ID && rtph264pay->spspps_interval > 0) {
     if (rtph264pay->last_spspps != -1) {
       guint64 diff;
+      GstClockTime running_time =
+          gst_segment_to_running_time (&basepayload->segment, GST_FORMAT_TIME,
+          pts);
 
       GST_LOG_OBJECT (rtph264pay,
           "now %" GST_TIME_FORMAT ", last SPS/PPS %" GST_TIME_FORMAT,
-          GST_TIME_ARGS (pts), GST_TIME_ARGS (rtph264pay->last_spspps));
+          GST_TIME_ARGS (running_time),
+          GST_TIME_ARGS (rtph264pay->last_spspps));
 
       /* calculate diff between last SPS/PPS in milliseconds */
-      if (pts > rtph264pay->last_spspps)
-        diff = pts - rtph264pay->last_spspps;
+      if (running_time > rtph264pay->last_spspps)
+        diff = running_time - rtph264pay->last_spspps;
       else
         diff = 0;
 
@@ -884,8 +903,7 @@ gst_rtp_h264_pay_payload_nal (GstRTPBasePayload * basepayload,
     gst_rtp_buffer_unmap (&rtp);
 
     /* insert payload memory block */
-    gst_rtp_copy_meta (GST_ELEMENT_CAST (rtph264pay), outbuf, paybuf,
-        g_quark_from_static_string (GST_META_TAG_VIDEO_STR));
+    gst_rtp_copy_video_meta (rtph264pay, outbuf, paybuf);
     outbuf = gst_buffer_append (outbuf, paybuf);
 
     /* push the buffer to the next element */
@@ -945,8 +963,7 @@ gst_rtp_h264_pay_payload_nal (GstRTPBasePayload * basepayload,
       gst_rtp_buffer_unmap (&rtp);
 
       /* insert payload memory block */
-      gst_rtp_copy_meta (GST_ELEMENT_CAST (rtph264pay), outbuf, paybuf,
-          g_quark_from_static_string (GST_META_TAG_VIDEO_STR));
+      gst_rtp_copy_video_meta (rtph264pay, outbuf, paybuf);
       gst_buffer_copy_into (outbuf, paybuf, GST_BUFFER_COPY_MEMORY, pos,
           limitedSize);
 

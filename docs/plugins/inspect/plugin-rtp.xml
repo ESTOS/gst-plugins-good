@@ -3,7 +3,7 @@
   <description>Real-time protocol plugins</description>
   <filename>../../gst/rtp/.libs/libgstrtp.so</filename>
   <basename>libgstrtp.so</basename>
-  <version>1.8.1</version>
+  <version>1.14.4</version>
   <license>LGPL</license>
   <source>gst-plugins-good</source>
   <package>GStreamer Good Plug-ins source release</package>
@@ -111,6 +111,48 @@
           <direction>source</direction>
           <presence>always</presence>
           <details>application/x-rtp, media=(string)audio, payload=(int)[ 96, 127 ], clock-rate=(int)[ 1, 2147483647 ], encoding-name=(string)L24, channels=(int)[ 1, 2147483647 ]</details>
+        </caps>
+      </pads>
+    </element>
+    <element>
+      <name>rtpL8depay</name>
+      <longname>RTP audio depayloader</longname>
+      <class>Codec/Depayloader/Network/RTP</class>
+      <description>Extracts raw audio from RTP packets</description>
+      <author>Zeeshan Ali &lt;zak147@yahoo.com&gt;,Wim Taymans &lt;wim.taymans@gmail.com&gt;, GE Intelligent Platforms Embedded Systems, Inc.</author>
+      <pads>
+        <caps>
+          <name>sink</name>
+          <direction>sink</direction>
+          <presence>always</presence>
+          <details>application/x-rtp, media=(string)audio, clock-rate=(int)[ 1, 2147483647 ], encoding-name=(string)L8</details>
+        </caps>
+        <caps>
+          <name>src</name>
+          <direction>source</direction>
+          <presence>always</presence>
+          <details>audio/x-raw, format=(string)U8, layout=(string)interleaved, rate=(int)[ 1, 2147483647 ], channels=(int)[ 1, 2147483647 ]</details>
+        </caps>
+      </pads>
+    </element>
+    <element>
+      <name>rtpL8pay</name>
+      <longname>RTP audio payloader</longname>
+      <class>Codec/Payloader/Network/RTP</class>
+      <description>Payload-encode Raw audio into RTP packets (RFC 3551)</description>
+      <author>Wim Taymans &lt;wim.taymans@gmail.com&gt;, GE Intelligent Platforms Embedded Systems, Inc.</author>
+      <pads>
+        <caps>
+          <name>sink</name>
+          <direction>sink</direction>
+          <presence>always</presence>
+          <details>audio/x-raw, format=(string)U8, layout=(string)interleaved, rate=(int)[ 1, 2147483647 ], channels=(int)[ 1, 2147483647 ]</details>
+        </caps>
+        <caps>
+          <name>src</name>
+          <direction>source</direction>
+          <presence>always</presence>
+          <details>application/x-rtp, media=(string)audio, payload=(int)[ 96, 127 ], clock-rate=(int)[ 1, 2147483647 ], encoding-name=(string)L8, channels=(int)[ 1, 2147483647 ]</details>
         </caps>
       </pads>
     </element>
@@ -362,7 +404,7 @@
           <name>src</name>
           <direction>source</direction>
           <presence>always</presence>
-          <details>application/x-rtp, media=(string)audio, encoding-name=(string)G722, payload=(int)9, clock-rate=(int)8000; application/x-rtp, media=(string)audio, encoding-name=(string)G722, payload=(int)[ 96, 127 ], clock-rate=(int)8000</details>
+          <details>application/x-rtp, media=(string)audio, encoding-name=(string)G722, payload=(int)9, encoding-params=(string)1, clock-rate=(int)8000; application/x-rtp, media=(string)audio, encoding-name=(string)G722, payload=(int)[ 96, 127 ], encoding-params=(string)1, clock-rate=(int)8000</details>
         </caps>
       </pads>
     </element>
@@ -748,7 +790,7 @@
       <name>rtph265depay</name>
       <longname>RTP H265 depayloader</longname>
       <class>Codec/Depayloader/Network/RTP</class>
-      <description>Extracts H265 video from RTP packets (draft-ietf-payload-rtp-h265-03.txt)</description>
+      <description>Extracts H265 video from RTP packets (RFC 7798)</description>
       <author>Jurgen Slowack &lt;jurgenslowack@gmail.com&gt;</author>
       <pads>
         <caps>
@@ -761,7 +803,7 @@
           <name>src</name>
           <direction>source</direction>
           <presence>always</presence>
-          <details>video/x-h265, stream-format=(string)byte-stream, alignment=(string){ nal, au }</details>
+          <details>video/x-h265, stream-format=(string)hvc1, alignment=(string)au; video/x-h265, stream-format=(string)byte-stream, alignment=(string){ nal, au }</details>
         </caps>
       </pads>
     </element>
@@ -769,14 +811,14 @@
       <name>rtph265pay</name>
       <longname>RTP H265 payloader</longname>
       <class>Codec/Payloader/Network/RTP</class>
-      <description>Payload-encode H265 video into RTP packets (based on draft-ietf-payload-rtp-h265-03.txt)</description>
+      <description>Payload-encode H265 video into RTP packets (RFC 7798)</description>
       <author>Jurgen Slowack &lt;jurgenslowack@gmail.com&gt;</author>
       <pads>
         <caps>
           <name>sink</name>
           <direction>sink</direction>
           <presence>always</presence>
-          <details>video/x-h265, stream-format=(string)byte-stream, alignment=(string){ nal, au }</details>
+          <details>video/x-h265, stream-format=(string)hvc1, alignment=(string)au; video/x-h265, stream-format=(string)byte-stream, alignment=(string){ nal, au }</details>
         </caps>
         <caps>
           <name>src</name>
@@ -839,13 +881,13 @@
           <name>sink</name>
           <direction>sink</direction>
           <presence>always</presence>
-          <details>application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)JPEG2000</details>
+          <details>application/x-rtp, media=(string)video, clock-rate=(int)90000, sampling=(string){ RGB, BGR, RGBA, BGRA, YCbCrA, YCbCr-4:4:4, YCbCr-4:2:2, YCbCr-4:2:0, YCbCr-4:1:1, GRAYSCALE }, encoding-name=(string)JPEG2000; application/x-rtp, media=(string)video, clock-rate=(int)90000, colorspace=(string){ sRGB, sYUV, GRAY }, encoding-name=(string)JPEG2000</details>
         </caps>
         <caps>
           <name>src</name>
           <direction>source</direction>
           <presence>always</presence>
-          <details>image/x-jpc</details>
+          <details>image/x-jpc, colorspace=(string){ sRGB, sYUV, GRAY }</details>
         </caps>
       </pads>
     </element>
@@ -860,13 +902,13 @@
           <name>sink</name>
           <direction>sink</direction>
           <presence>always</presence>
-          <details>image/x-jpc</details>
+          <details>image/x-jpc, sampling=(string){ RGB, BGR, RGBA, BGRA, YCbCrA, YCbCr-4:4:4, YCbCr-4:2:2, YCbCr-4:2:0, YCbCr-4:1:1, GRAYSCALE }</details>
         </caps>
         <caps>
           <name>src</name>
           <direction>source</direction>
           <presence>always</presence>
-          <details>application/x-rtp, media=(string)video, payload=(int)[ 96, 127 ], clock-rate=(int)90000, encoding-name=(string)JPEG2000</details>
+          <details>application/x-rtp, media=(string)video, payload=(int)[ 96, 127 ], clock-rate=(int)90000, sampling=(string){ RGB, BGR, RGBA, BGRA, YCbCrA, YCbCr-4:4:4, YCbCr-4:2:2, YCbCr-4:2:0, YCbCr-4:1:1, GRAYSCALE }, encoding-name=(string)JPEG2000</details>
         </caps>
       </pads>
     </element>
@@ -1034,7 +1076,7 @@
           <name>src</name>
           <direction>source</direction>
           <presence>always</presence>
-          <details>audio/mpeg, mpegversion=(int)4, framed=(boolean)true, stream-format=(string)raw</details>
+          <details>audio/mpeg, mpegversion=(int)4, framed=(boolean){ false, true }, stream-format=(string)raw</details>
         </caps>
       </pads>
     </element>
@@ -1295,7 +1337,7 @@
       <longname>RTP PCMA depayloader</longname>
       <class>Codec/Depayloader/Network/RTP</class>
       <description>Extracts PCMA audio from RTP packets</description>
-      <author>Edgard Lima &lt;edgard.lima@indt.org.br&gt;, Zeeshan Ali &lt;zeenix@gmail.com&gt;</author>
+      <author>Edgard Lima &lt;edgard.lima@gmail.com&gt;, Zeeshan Ali &lt;zeenix@gmail.com&gt;</author>
       <pads>
         <caps>
           <name>sink</name>
@@ -1316,7 +1358,7 @@
       <longname>RTP PCMA payloader</longname>
       <class>Codec/Payloader/Network/RTP</class>
       <description>Payload-encodes PCMA audio into a RTP packet</description>
-      <author>Edgard Lima &lt;edgard.lima@indt.org.br&gt;</author>
+      <author>Edgard Lima &lt;edgard.lima@gmail.com&gt;</author>
       <pads>
         <caps>
           <name>sink</name>
@@ -1337,7 +1379,7 @@
       <longname>RTP PCMU depayloader</longname>
       <class>Codec/Depayloader/Network/RTP</class>
       <description>Extracts PCMU audio from RTP packets</description>
-      <author>Edgard Lima &lt;edgard.lima@indt.org.br&gt;, Zeeshan Ali &lt;zeenix@gmail.com&gt;</author>
+      <author>Edgard Lima &lt;edgard.lima@gmail.com&gt;, Zeeshan Ali &lt;zeenix@gmail.com&gt;</author>
       <pads>
         <caps>
           <name>sink</name>
@@ -1358,7 +1400,7 @@
       <longname>RTP PCMU payloader</longname>
       <class>Codec/Payloader/Network/RTP</class>
       <description>Payload-encodes PCMU audio into a RTP packet</description>
-      <author>Edgard Lima &lt;edgard.lima@indt.org.br&gt;</author>
+      <author>Edgard Lima &lt;edgard.lima@gmail.com&gt;</author>
       <pads>
         <caps>
           <name>sink</name>
@@ -1413,6 +1455,48 @@
           <direction>source</direction>
           <presence>always</presence>
           <details>audio/x-qdm2</details>
+        </caps>
+      </pads>
+    </element>
+    <element>
+      <name>rtpreddec</name>
+      <longname>Redundant Audio Data (RED) Decoder</longname>
+      <class>Codec/Depayloader/Network/RTP</class>
+      <description>Decode Redundant Audio Data (RED)</description>
+      <author>Hani Mustafa &lt;hani@pexip.com&gt;, Mikhail Fludkov &lt;misha@pexip.com&gt;</author>
+      <pads>
+        <caps>
+          <name>sink</name>
+          <direction>sink</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
+        </caps>
+        <caps>
+          <name>src</name>
+          <direction>source</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
+        </caps>
+      </pads>
+    </element>
+    <element>
+      <name>rtpredenc</name>
+      <longname>Redundant Audio Data (RED) Encoder</longname>
+      <class>Codec/Payloader/Network/RTP</class>
+      <description>Encode Redundant Audio Data (RED)</description>
+      <author>Hani Mustafa &lt;hani@pexip.com&gt;, Mikhail Fludkov &lt;misha@pexip.com&gt;</author>
+      <pads>
+        <caps>
+          <name>sink</name>
+          <direction>sink</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
+        </caps>
+        <caps>
+          <name>src</name>
+          <direction>source</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
         </caps>
       </pads>
     </element>
@@ -1505,7 +1589,7 @@
       <longname>RTP Speex depayloader</longname>
       <class>Codec/Depayloader/Network/RTP</class>
       <description>Extracts Speex audio from RTP packets</description>
-      <author>Edgard Lima &lt;edgard.lima@indt.org.br&gt;</author>
+      <author>Edgard Lima &lt;edgard.lima@gmail.com&gt;</author>
       <pads>
         <caps>
           <name>sink</name>
@@ -1526,7 +1610,7 @@
       <longname>RTP Speex payloader</longname>
       <class>Codec/Payloader/Network/RTP</class>
       <description>Payload-encodes Speex audio into a RTP packet</description>
-      <author>Edgard Lima &lt;edgard.lima@indt.org.br&gt;</author>
+      <author>Edgard Lima &lt;edgard.lima@gmail.com&gt;</author>
       <pads>
         <caps>
           <name>sink</name>
@@ -1539,6 +1623,27 @@
           <direction>source</direction>
           <presence>always</presence>
           <details>application/x-rtp, media=(string)audio, payload=(int)[ 96, 127 ], clock-rate=(int)[ 6000, 48000 ], encoding-name=(string)SPEEX, encoding-params=(string)1</details>
+        </caps>
+      </pads>
+    </element>
+    <element>
+      <name>rtpstorage</name>
+      <longname>RTP storage</longname>
+      <class>Analyzer/RTP</class>
+      <description>Helper element for various purposes (ex. recovering from packet loss using RED/FEC). Saves given number of RTP packets. Should be instantiated before jitterbuffer</description>
+      <author>Mikhail Fludkov &lt;misha@pexip.com&gt;</author>
+      <pads>
+        <caps>
+          <name>sink</name>
+          <direction>sink</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
+        </caps>
+        <caps>
+          <name>src</name>
+          <direction>source</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
         </caps>
       </pads>
     </element>
@@ -1644,6 +1749,48 @@
           <direction>source</direction>
           <presence>always</presence>
           <details>application/x-rtp, media=(string)video, payload=(int)[ 96, 127 ], clock-rate=(int)90000, encoding-name=(string)THEORA</details>
+        </caps>
+      </pads>
+    </element>
+    <element>
+      <name>rtpulpfecdec</name>
+      <longname>RTP FEC Decoder</longname>
+      <class>Codec/Depayloader/Network/RTP</class>
+      <description>Decodes RTP FEC (RFC5109)</description>
+      <author>Mikhail Fludkov &lt;misha@pexip.com&gt;</author>
+      <pads>
+        <caps>
+          <name>sink</name>
+          <direction>sink</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
+        </caps>
+        <caps>
+          <name>src</name>
+          <direction>source</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
+        </caps>
+      </pads>
+    </element>
+    <element>
+      <name>rtpulpfecenc</name>
+      <longname>RTP FEC Encoder</longname>
+      <class>Codec/Payloader/Network/RTP</class>
+      <description>Encodes RTP FEC (RFC5109)</description>
+      <author>Mikhail Fludkov &lt;misha@pexip.com&gt;</author>
+      <pads>
+        <caps>
+          <name>sink</name>
+          <direction>sink</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
+        </caps>
+        <caps>
+          <name>src</name>
+          <direction>source</direction>
+          <presence>always</presence>
+          <details>application/x-rtp</details>
         </caps>
       </pads>
     </element>

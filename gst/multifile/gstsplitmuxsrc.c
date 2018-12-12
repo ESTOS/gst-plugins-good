@@ -61,6 +61,14 @@ enum
   PROP_LOCATION
 };
 
+enum
+{
+  SIGNAL_FORMAT_LOCATION,
+  SIGNAL_LAST
+};
+
+static guint signals[SIGNAL_LAST];
+
 static GstStaticPadTemplate video_src_template =
 GST_STATIC_PAD_TEMPLATE ("video",
     GST_PAD_SRC,
@@ -198,12 +206,12 @@ gst_splitmux_src_class_init (GstSplitMuxSrcClass * klass)
       "Source that reads a set of files created by splitmuxsink",
       "Jan Schmidt <jan@centricular.com>");
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&video_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&audio_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&subtitle_src_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &video_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &audio_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &subtitle_src_template);
 
   gstelement_class->change_state =
       GST_DEBUG_FUNCPTR (gst_splitmux_src_change_state);
@@ -212,6 +220,20 @@ gst_splitmux_src_class_init (GstSplitMuxSrcClass * klass)
       g_param_spec_string ("location", "File Input Pattern",
           "Glob pattern for the location of the files to read", NULL,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  /**
+   * GstSplitMuxSrc::format-location:
+   * @splitmux: the #GstSplitMuxSrc
+   *
+   * Returns: A NULL-terminated sorted array of strings containing the
+   *   filenames of the input files. The array will be freed internally
+   *   using g_strfreev()
+   *
+   * Since: 1.8
+   */
+  signals[SIGNAL_FORMAT_LOCATION] =
+      g_signal_new ("format-location", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_STRV, 0);
 }
 
 static void
@@ -237,6 +259,7 @@ gst_splitmux_src_dispose (GObject * object)
     gst_element_remove_pad (GST_ELEMENT (splitmux), pad);
   }
   g_list_free (splitmux->pads);
+  splitmux->n_pads = 0;
   splitmux->pads = NULL;
   SPLITMUX_SRC_PADS_UNLOCK (splitmux);
 
@@ -401,9 +424,14 @@ gst_splitmux_handle_event (GstSplitMuxSrc * splitmux,
       if (gst_splitmux_end_of_part (splitmux, splitpad))
         // Continuing to next part, drop the EOS
         goto drop_event;
+      if (splitmux->segment_seqnum) {
+        event = gst_event_make_writable (event);
+        gst_event_set_seqnum (event, splitmux->segment_seqnum);
+      }
       break;
     }
     case GST_EVENT_SEGMENT:{
+      GstClockTime duration;
       GstSegment seg;
 
       gst_event_copy_segment (event, &seg);
@@ -438,11 +466,22 @@ gst_splitmux_handle_event (GstSplitMuxSrc * splitmux,
         }
       }
 
+      GST_OBJECT_LOCK (splitmux);
+      duration = splitmux->total_duration;
+      GST_OBJECT_UNLOCK (splitmux);
+
+      if (duration > 0)
+        seg.duration = duration;
+      else
+        seg.duration = GST_CLOCK_TIME_NONE;
+
       GST_INFO_OBJECT (splitpad,
           "Forwarding segment %" GST_SEGMENT_FORMAT, &seg);
 
       gst_event_unref (event);
       event = gst_event_new_segment (&seg);
+      if (splitmux->segment_seqnum)
+        gst_event_set_seqnum (event, splitmux->segment_seqnum);
       splitpad->sent_segment = TRUE;
       break;
     }
@@ -486,6 +525,22 @@ gst_splitmux_handle_buffer (GstSplitMuxSrc * splitmux,
   return ret;
 }
 
+static guint
+count_not_linked (GstSplitMuxSrc * splitmux)
+{
+  GList *cur;
+  guint ret = 0;
+
+  for (cur = g_list_first (splitmux->pads);
+      cur != NULL; cur = g_list_next (cur)) {
+    SplitMuxSrcPad *splitpad = (SplitMuxSrcPad *) (cur->data);
+    if (GST_PAD_LAST_FLOW_RETURN (splitpad) == GST_FLOW_NOT_LINKED)
+      ret++;
+  }
+
+  return ret;
+}
+
 static void
 gst_splitmux_pad_loop (GstPad * pad)
 {
@@ -522,15 +577,25 @@ gst_splitmux_pad_loop (GstPad * pad)
   } else {
     GstBuffer *buf = (GstBuffer *) (item->object);
     GstFlowReturn ret = gst_splitmux_handle_buffer (splitmux, splitpad, buf);
-    if (G_UNLIKELY (ret != GST_FLOW_OK)) {
+    if (G_UNLIKELY (ret != GST_FLOW_OK && ret != GST_FLOW_EOS)) {
       /* Stop immediately on error or flushing */
       GST_INFO_OBJECT (splitpad, "Stopping due to pad_push() result %d", ret);
       gst_pad_pause_task (pad);
-      if (ret <= GST_FLOW_EOS) {
-        const gchar *reason = gst_flow_get_name (ret);
-        GST_ELEMENT_ERROR (splitmux, STREAM, FAILED,
-            (_("Internal data flow error.")),
-            ("streaming task paused, reason %s (%d)", reason, ret));
+      if (ret < GST_FLOW_EOS) {
+        GST_ELEMENT_FLOW_ERROR (splitmux, ret);
+      } else if (ret == GST_FLOW_NOT_LINKED) {
+        gboolean post_error;
+        guint n_notlinked;
+
+        /* Only post not-linked if all pads are not-linked */
+        SPLITMUX_SRC_PADS_LOCK (splitmux);
+        n_notlinked = count_not_linked (splitmux);
+        post_error = (splitmux->pads_complete
+            && n_notlinked == splitmux->n_pads);
+        SPLITMUX_SRC_PADS_UNLOCK (splitmux);
+
+        if (post_error)
+          GST_ELEMENT_FLOW_ERROR (splitmux, ret);
       }
     }
   }
@@ -552,7 +617,8 @@ flushing:
 }
 
 static gboolean
-gst_splitmux_src_activate_part (GstSplitMuxSrc * splitmux, guint part)
+gst_splitmux_src_activate_part (GstSplitMuxSrc * splitmux, guint part,
+    GstSeekFlags extra_flags)
 {
   GList *cur;
 
@@ -560,7 +626,7 @@ gst_splitmux_src_activate_part (GstSplitMuxSrc * splitmux, guint part)
 
   splitmux->cur_part = part;
   if (!gst_splitmux_part_reader_activate (splitmux->parts[part],
-          &splitmux->play_segment))
+          &splitmux->play_segment, extra_flags))
     return FALSE;
 
   SPLITMUX_SRC_PADS_LOCK (splitmux);
@@ -601,17 +667,22 @@ gst_splitmux_src_start (GstSplitMuxSrc * splitmux)
 
   GST_DEBUG_OBJECT (splitmux, "Starting");
 
-  GST_OBJECT_LOCK (splitmux);
-  if (splitmux->location != NULL && splitmux->location[0] != '\0') {
-    basename = g_path_get_basename (splitmux->location);
-    dirname = g_path_get_dirname (splitmux->location);
+  g_signal_emit (splitmux, signals[SIGNAL_FORMAT_LOCATION], 0, &files);
+
+  if (files == NULL || *files == NULL) {
+    GST_OBJECT_LOCK (splitmux);
+    if (splitmux->location != NULL && splitmux->location[0] != '\0') {
+      basename = g_path_get_basename (splitmux->location);
+      dirname = g_path_get_dirname (splitmux->location);
+    }
+    GST_OBJECT_UNLOCK (splitmux);
+
+    g_strfreev (files);
+    files = gst_split_util_find_files (dirname, basename, &err);
+
+    if (files == NULL || *files == NULL)
+      goto no_files;
   }
-  GST_OBJECT_UNLOCK (splitmux);
-
-  files = gst_split_util_find_files (dirname, basename, &err);
-
-  if (files == NULL || *files == NULL)
-    goto no_files;
 
   SPLITMUX_SRC_LOCK (splitmux);
   splitmux->pads_complete = FALSE;
@@ -665,7 +736,7 @@ gst_splitmux_src_start (GstSplitMuxSrc * splitmux)
   GST_INFO_OBJECT (splitmux,
       "All parts prepared. Total duration %" GST_TIME_FORMAT
       " Activating first part", GST_TIME_ARGS (total_duration));
-  ret = gst_splitmux_src_activate_part (splitmux, 0);
+  ret = gst_splitmux_src_activate_part (splitmux, 0, GST_SEEK_FLAG_NONE);
   if (ret == FALSE)
     goto failed_first_part;
 done:
@@ -726,12 +797,14 @@ gst_splitmux_src_stop (GstSplitMuxSrc * splitmux)
   splitmux->pads = NULL;
   SPLITMUX_SRC_PADS_UNLOCK (splitmux);
 
+  SPLITMUX_SRC_UNLOCK (splitmux);
   for (cur = g_list_first (pads_list); cur != NULL; cur = g_list_next (cur)) {
     SplitMuxSrcPad *tmp = (SplitMuxSrcPad *) (cur->data);
     gst_pad_stop_task (GST_PAD (tmp));
     gst_element_remove_pad (GST_ELEMENT (splitmux), GST_PAD (tmp));
   }
   g_list_free (pads_list);
+  SPLITMUX_SRC_LOCK (splitmux);
 
   g_free (splitmux->parts);
   splitmux->parts = NULL;
@@ -796,6 +869,7 @@ gst_splitmux_find_output_pad (GstSplitMuxPartReader * part, GstPad * pad,
     target = g_object_new (SPLITMUX_TYPE_SRC_PAD,
         "name", pad_name, "direction", GST_PAD_SRC, NULL);
     splitmux->pads = g_list_prepend (splitmux->pads, target);
+    splitmux->n_pads++;
 
     gst_pad_set_active (target, TRUE);
 
@@ -849,8 +923,10 @@ gst_splitmux_push_event (GstSplitMuxSrc * splitmux, GstEvent * e,
 {
   GList *cur;
 
-  if (seqnum)
+  if (seqnum) {
+    e = gst_event_make_writable (e);
     gst_event_set_seqnum (e, seqnum);
+  }
 
   SPLITMUX_SRC_PADS_LOCK (splitmux);
   for (cur = g_list_first (splitmux->pads);
@@ -870,8 +946,10 @@ gst_splitmux_push_flush_stop (GstSplitMuxSrc * splitmux, guint32 seqnum)
   GstEvent *e = gst_event_new_flush_stop (TRUE);
   GList *cur;
 
-  if (seqnum)
+  if (seqnum) {
+    e = gst_event_make_writable (e);
     gst_event_set_seqnum (e, seqnum);
+  }
 
   SPLITMUX_SRC_PADS_LOCK (splitmux);
   for (cur = g_list_first (splitmux->pads);
@@ -919,6 +997,30 @@ gst_splitmux_end_of_part (GstSplitMuxSrc * splitmux, SplitMuxSrcPad * splitpad)
   if (gst_splitmux_part_is_eos (splitmux->parts[splitpad->cur_part]))
     gst_splitmux_part_reader_deactivate (splitmux->parts[cur_part]);
 
+  if (splitmux->play_segment.rate >= 0.0) {
+    if (splitmux->play_segment.stop != -1) {
+      GstClockTime part_end =
+          gst_splitmux_part_reader_get_end_offset (splitmux->parts[cur_part]);
+      if (part_end >= splitmux->play_segment.stop) {
+        GST_DEBUG_OBJECT (splitmux,
+            "Stop position was within that part. Finishing");
+        next_part = -1;
+      }
+    }
+  } else {
+    if (splitmux->play_segment.start != -1) {
+      GstClockTime part_start =
+          gst_splitmux_part_reader_get_start_offset (splitmux->parts[cur_part]);
+      if (part_start <= splitmux->play_segment.start) {
+        GST_DEBUG_OBJECT (splitmux,
+            "Start position %" GST_TIME_FORMAT
+            " was within that part. Finishing",
+            GST_TIME_ARGS (splitmux->play_segment.start));
+        next_part = -1;
+      }
+    }
+  }
+
   if (next_part != -1) {
     GST_DEBUG_OBJECT (splitmux, "At EOS on pad %" GST_PTR_FORMAT
         " moving to part %d", splitpad, next_part);
@@ -931,21 +1033,24 @@ gst_splitmux_end_of_part (GstSplitMuxSrc * splitmux, SplitMuxSrcPad * splitpad)
         (GstPad *) (splitpad));
 
     if (splitmux->cur_part != next_part) {
-      GstSegment tmp;
-      /* If moving backward into a new part, set stop
-       * to -1 to ensure we play the entire file - workaround
-       * a bug in qtdemux that misses bits at the end */
-      gst_segment_copy_into (&splitmux->play_segment, &tmp);
-      if (tmp.rate < 0)
-        tmp.stop = -1;
+      if (!gst_splitmux_part_reader_is_active (splitpad->reader)) {
+        GstSegment tmp;
+        /* If moving backward into a new part, set stop
+         * to -1 to ensure we play the entire file - workaround
+         * a bug in qtdemux that misses bits at the end */
+        gst_segment_copy_into (&splitmux->play_segment, &tmp);
+        if (tmp.rate < 0)
+          tmp.stop = -1;
 
-      /* This is the first pad to move to the new part, activate it */
+        /* This is the first pad to move to the new part, activate it */
+        GST_DEBUG_OBJECT (splitpad,
+            "First pad to change part. Activating part %d with seg %"
+            GST_SEGMENT_FORMAT, next_part, &tmp);
+        if (!gst_splitmux_part_reader_activate (splitpad->reader, &tmp,
+                GST_SEEK_FLAG_NONE))
+          goto error;
+      }
       splitmux->cur_part = next_part;
-      GST_DEBUG_OBJECT (splitpad,
-          "First pad to change part. Activating part %d with seg %"
-          GST_SEGMENT_FORMAT, next_part, &tmp);
-      if (!gst_splitmux_part_reader_activate (splitpad->reader, &tmp))
-        goto error;
     }
     res = TRUE;
   }
@@ -1092,6 +1197,7 @@ splitmux_src_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 
       /* Everything is stopped, so update the play_segment */
       gst_segment_copy_into (&tmp, &splitmux->play_segment);
+      splitmux->segment_seqnum = seqnum;
 
       /* Work out where to start from now */
       for (i = 0; i < splitmux->num_parts; i++) {
@@ -1113,7 +1219,7 @@ splitmux_src_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
           GST_TIME_FORMAT, GST_TIME_ARGS (position),
           i, GST_TIME_ARGS (position - part_start));
 
-      ret = gst_splitmux_src_activate_part (splitmux, i);
+      ret = gst_splitmux_src_activate_part (splitmux, i, flags);
       SPLITMUX_SRC_UNLOCK (splitmux);
     }
     default:
@@ -1152,18 +1258,21 @@ splitmux_src_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
       break;
     }
     case GST_QUERY_DURATION:{
+      GstClockTime duration;
       GstFormat fmt;
+
       gst_query_parse_duration (query, &fmt, NULL);
       if (fmt != GST_FORMAT_TIME)
         break;
 
       GST_OBJECT_LOCK (splitmux);
-      if (splitmux->total_duration > 0) {
-        gst_query_set_duration (query, GST_FORMAT_TIME,
-            splitmux->total_duration);
+      duration = splitmux->total_duration;
+      GST_OBJECT_UNLOCK (splitmux);
+
+      if (duration > 0 && duration != GST_CLOCK_TIME_NONE) {
+        gst_query_set_duration (query, GST_FORMAT_TIME, duration);
         ret = TRUE;
       }
-      GST_OBJECT_UNLOCK (splitmux);
       break;
     }
     case GST_QUERY_SEEKING:{

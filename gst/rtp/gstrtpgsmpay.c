@@ -74,10 +74,10 @@ gst_rtp_gsm_pay_class_init (GstRTPGSMPayClass * klass)
   gstelement_class = (GstElementClass *) klass;
   gstrtpbasepayload_class = (GstRTPBasePayloadClass *) klass;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_gsm_pay_sink_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_gsm_pay_src_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_gsm_pay_sink_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_gsm_pay_src_template);
 
   gst_element_class_set_static_metadata (gstelement_class, "RTP GSM payloader",
       "Codec/Payloader/Network/RTP",
@@ -145,14 +145,13 @@ gst_rtp_gsm_pay_handle_buffer (GstRTPBasePayload * basepayload,
   if (payload_len > GST_RTP_BASE_PAYLOAD_MTU (rtpgsmpay))
     goto too_big;
 
-  outbuf = gst_rtp_buffer_new_allocate (payload_len, 0, 0);
+  outbuf = gst_rtp_buffer_new_allocate (0, 0, 0);
 
   /* copy timestamp and duration */
   GST_BUFFER_PTS (outbuf) = timestamp;
   GST_BUFFER_DURATION (outbuf) = duration;
 
-  gst_rtp_copy_meta (GST_ELEMENT_CAST (rtpgsmpay), outbuf, buffer,
-      g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+  gst_rtp_copy_audio_meta (rtpgsmpay, outbuf, buffer);
 
   /* append payload */
   outbuf = gst_buffer_append (outbuf, buffer);

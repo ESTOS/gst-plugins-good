@@ -103,6 +103,9 @@ typedef struct
   guint64 post_stsd_offset;
   guint32 stsd_size;
 
+  guint32 extra_atoms_size;
+  guint32 extra_atoms_offset;
+
   /* for storing the samples info */
   AtomSTBL stbl;
 } TrakRecovData;
@@ -154,6 +157,6 @@ gboolean        moov_recov_parse_buffers (MoovRecovFile * moovrf,
                                           GError ** err);
 gboolean        moov_recov_write_file    (MoovRecovFile * moovrf,
                                           MdatRecovFile * mdatrf, FILE * outf,
-                                          GError ** err);
+                                          GError ** err, GError ** warn);
 
 #endif /* __ATOMS_RECOVERY_H__ */

@@ -271,6 +271,8 @@ rtp_source_reset (RTPSource * src)
 
   src->stats.sent_pli_count = 0;
   src->stats.sent_fir_count = 0;
+  src->stats.sent_nack_count = 0;
+  src->stats.recv_nack_count = 0;
 }
 
 static void
@@ -299,7 +301,11 @@ rtp_source_init (RTPSource * src)
 
   src->reported_in_sr_of = g_hash_table_new (g_direct_hash, g_direct_equal);
 
+  src->last_keyframe_request = GST_CLOCK_TIME_NONE;
+
   rtp_source_reset (src);
+
+  src->pt_set = FALSE;
 }
 
 void
@@ -400,7 +406,9 @@ rtp_source_create_stats (RTPSource * src)
       "sent-pli-count", G_TYPE_UINT, src->stats.sent_pli_count,
       "recv-pli-count", G_TYPE_UINT, src->stats.recv_pli_count,
       "sent-fir-count", G_TYPE_UINT, src->stats.sent_fir_count,
-      "recv-fir-count", G_TYPE_UINT, src->stats.recv_fir_count, NULL);
+      "recv-fir-count", G_TYPE_UINT, src->stats.recv_fir_count,
+      "sent-nack-count", G_TYPE_UINT, src->stats.sent_nack_count,
+      "recv-nack-count", G_TYPE_UINT, src->stats.recv_nack_count, NULL);
 
   /* get the last SR. */
   have_sr = rtp_source_get_last_sr (src, &time, &ntptime, &rtptime,
@@ -1143,7 +1151,7 @@ update_receiver_stats (RTPSource * src, RTPPacketInfo * pinfo,
       g_queue_clear (src->packets);
 
       /* duplicate or reordered packet, will be filtered by jitterbuffer. */
-      GST_WARNING ("duplicate or reordered packet (seqnr %u, expected %u)",
+      GST_INFO ("duplicate or reordered packet (seqnr %u, expected %u)",
           seqnr, expected);
     }
   }
@@ -1270,6 +1278,14 @@ rtp_source_send_rtp (RTPSource * src, RTPPacketInfo * pinfo)
   /* we are also a receiver of our packets */
   if (!update_receiver_stats (src, pinfo, FALSE))
     return GST_FLOW_OK;
+
+  if (src->pt_set && src->pt != pinfo->pt) {
+    GST_WARNING ("Changing pt from %u to %u for SSRC %u", src->pt, pinfo->pt,
+        src->ssrc);
+  }
+
+  src->pt = pinfo->pt;
+  src->pt_set = TRUE;
 
   /* update stats for the SR */
   src->stats.packets_sent += pinfo->packets;
@@ -1476,6 +1492,12 @@ rtp_source_get_new_sr (RTPSource * src, guint64 ntpnstime,
   GST_DEBUG ("last_rtime %" GST_TIME_FORMAT ", last_rtptime %"
       G_GUINT64_FORMAT, GST_TIME_ARGS (src->last_rtime), t_rtp);
 
+  if (src->clock_rate == -1 && src->pt_set) {
+    GST_INFO ("no clock-rate, getting for pt %u and SSRC %u", src->pt,
+        src->ssrc);
+    get_clock_rate (src, src->pt);
+  }
+
   if (src->clock_rate != -1) {
     /* get the diff between the clock running_time and the buffer running_time.
      * This is the elapsed time, as measured against the pipeline clock, between
@@ -1496,7 +1518,8 @@ rtp_source_get_new_sr (RTPSource * src, guint64 ntpnstime,
       t_rtp -= gst_util_uint64_scale_int (diff, src->clock_rate, GST_SECOND);
     }
   } else {
-    GST_WARNING ("no clock-rate, cannot interpolate rtp time");
+    GST_WARNING ("no clock-rate, cannot interpolate rtp time for SSRC %u",
+        src->ssrc);
   }
 
   /* convert the NTP time in nanoseconds to 32.32 fixed point */

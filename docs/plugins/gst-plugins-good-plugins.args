@@ -214,7 +214,7 @@
 <RANGE></RANGE>
 <FLAGS>rw</FLAGS>
 <NICK>Maximum File Duration</NICK>
-<BLURB>Maximum file duration before starting a new file in max-size mode.</BLURB>
+<BLURB>Maximum file duration before starting a new file in max-size mode (in nanoseconds).</BLURB>
 <DEFAULT>18446744073709551615</DEFAULT>
 </ARG>
 
@@ -554,7 +554,7 @@
 <RANGE></RANGE>
 <FLAGS>rw</FLAGS>
 <NICK>Multicast Interface</NICK>
-<BLURB>The network interface on which to join the multicast group.</BLURB>
+<BLURB>The network interface on which to join the multicast group.This allows multiple interfaces seperated by comma. ("eth0,eth1").</BLURB>
 <DEFAULT>NULL</DEFAULT>
 </ARG>
 
@@ -619,6 +619,16 @@
 </ARG>
 
 <ARG>
+<NAME>GstUDPSrc::retrieve-sender-address</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Retrieve Sender Address</NICK>
+<BLURB>Whether to retrieve the sender address and add it to buffers as meta. Disabling this might result in minor performance improvements in certain scenarios.</BLURB>
+<DEFAULT>TRUE</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstSMPTE::border</NAME>
 <TYPE>gint</TYPE>
 <RANGE>>= 0</RANGE>
@@ -674,7 +684,7 @@
 <RANGE></RANGE>
 <FLAGS>rw</FLAGS>
 <NICK>Debug</NICK>
-<BLURB>Dump request and response messages to stdout.</BLURB>
+<BLURB>Dump request and response messages to stdout(DEPRECATED: Printed all RTSP message to gstreamer log as 'log' level).</BLURB>
 <DEFAULT>FALSE</DEFAULT>
 </ARG>
 
@@ -1005,7 +1015,7 @@
 <FLAGS>rw</FLAGS>
 <NICK>User Agent</NICK>
 <BLURB>The User-Agent string to send to the server.</BLURB>
-<DEFAULT>"GStreamer/1.8.1"</DEFAULT>
+<DEFAULT>"GStreamer/1.14.4"</DEFAULT>
 </ARG>
 
 <ARG>
@@ -1016,6 +1026,56 @@
 <NICK>Max RTCP RTP Time Diff</NICK>
 <BLURB>Maximum amount of time in ms that the RTP time in RTCP SRs is allowed to be ahead (-1 disabled).</BLURB>
 <DEFAULT>1000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRTSPSrc::rfc7273-sync</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Sync on RFC7273 clock</NICK>
+<BLURB>Synchronize received streams to the RFC7273 clock (requires clock and offset to be provided).</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRTSPSrc::default-rtsp-version</NAME>
+<TYPE>GstRTSPVersion</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>The RTSP version to try first</NICK>
+<BLURB>The RTSP version that should be tried first when negotiating version.</BLURB>
+<DEFAULT>GST_RTSP_VERSION_1_0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRTSPSrc::max-ts-offset</NAME>
+<TYPE>gint64</TYPE>
+<RANGE>>= 0</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max TS Offset</NICK>
+<BLURB>The maximum absolute value of the time offset in (nanoseconds). Note, if the ntp-sync parameter is set the default value is changed to 0 (no limit).</BLURB>
+<DEFAULT>3000000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRTSPSrc::max-ts-offset-adjustment</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max Timestamp Offset Adjustment</NICK>
+<BLURB>The maximum number of nanoseconds per frame that time stamp offsets may be adjusted (0 = no limit).</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRTSPSrc::backchannel</NAME>
+<TYPE>GstRTSPBackchannel</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Backchannel type</NICK>
+<BLURB>The type of backchannel to setup. Default is 'none'.</BLURB>
+<DEFAULT>No backchannel</DEFAULT>
 </ARG>
 
 <ARG>
@@ -1359,6 +1419,16 @@
 </ARG>
 
 <ARG>
+<NAME>GstShout2send::timeout</NAME>
+<TYPE>guint</TYPE>
+<RANGE>>= 1</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>timeout</NICK>
+<BLURB>Max amount of time to wait for network activity, in milliseconds.</BLURB>
+<DEFAULT>10000</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstSpeexDec::enh</NAME>
 <TYPE>gboolean</TYPE>
 <RANGE></RANGE>
@@ -1446,6 +1516,16 @@
 <NICK>IDCT Method</NICK>
 <BLURB>The IDCT algorithm to use.</BLURB>
 <DEFAULT>Faster, less accurate integer method</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstJpegEnc::snapshot</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Snapshot</NICK>
+<BLURB>Send EOS after encoding a frame, useful for snapshots.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
 </ARG>
 
 <ARG>
@@ -1979,6 +2059,36 @@
 </ARG>
 
 <ARG>
+<NAME>GstMatroskaMux::timecodescale</NAME>
+<TYPE>gint64</TYPE>
+<RANGE>[1,1000000000]</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Timecode Scale</NICK>
+<BLURB>TimecodeScale used to calculate the Raw Timecode of a Block.</BLURB>
+<DEFAULT>1000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstMatroskaMux::max-cluster-duration</NAME>
+<TYPE>gint64</TYPE>
+<RANGE>>= 0</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Maximum cluster duration</NICK>
+<BLURB>A new cluster will be created if its duration exceeds this value. 0 means no maximum duration.</BLURB>
+<DEFAULT>65535000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstMatroskaMux::min-cluster-duration</NAME>
+<TYPE>gint64</TYPE>
+<RANGE>>= 0</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Minimum cluster duration</NICK>
+<BLURB>Desidered cluster duration as nanoseconds. A new cluster will be created irrespective of this property if a force key unit event is received. 0 means create a new cluster for each video keyframe or for each audio buffer in audio only streams.</BLURB>
+<DEFAULT>500000000</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstTest::allowed-timestamp-deviation</NAME>
 <TYPE>gint64</TYPE>
 <RANGE>>= G_MAXULONG</RANGE>
@@ -2204,7 +2314,7 @@
 <RANGE></RANGE>
 <FLAGS>rwx</FLAGS>
 <NICK>method</NICK>
-<BLURB>method.</BLURB>
+<BLURB>method (deprecated, use video-direction instead).</BLURB>
 <DEFAULT>Identity (no rotation)</DEFAULT>
 </ARG>
 
@@ -3425,7 +3535,7 @@
 <FLAGS>rw</FLAGS>
 <NICK>User-Agent</NICK>
 <BLURB>Value of the User-Agent HTTP request header field.</BLURB>
-<DEFAULT>"GStreamer souphttpsrc "</DEFAULT>
+<DEFAULT>"GStreamer souphttpsrc 1.14.4 "</DEFAULT>
 </ARG>
 
 <ARG>
@@ -3525,7 +3635,7 @@
 <FLAGS>rw</FLAGS>
 <NICK>keep-alive</NICK>
 <BLURB>Use HTTP persistent connections.</BLURB>
-<DEFAULT>FALSE</DEFAULT>
+<DEFAULT>TRUE</DEFAULT>
 </ARG>
 
 <ARG>
@@ -19675,7 +19785,7 @@
 <FLAGS>rw</FLAGS>
 <NICK>Client Name</NICK>
 <BLURB>The PulseAudio client name to use.</BLURB>
-<DEFAULT>"lt-gst-plugins-good-plugins-scan"</DEFAULT>
+<DEFAULT>"gst-plugins-good-plugins-scan"</DEFAULT>
 </ARG>
 
 <ARG>
@@ -19765,7 +19875,7 @@
 <FLAGS>rw</FLAGS>
 <NICK>Client Name</NICK>
 <BLURB>The PulseAudio client_name_to_use.</BLURB>
-<DEFAULT>"lt-gst-plugins-good-plugins-scan"</DEFAULT>
+<DEFAULT>"gst-plugins-good-plugins-scan"</DEFAULT>
 </ARG>
 
 <ARG>
@@ -20079,6 +20189,26 @@
 </ARG>
 
 <ARG>
+<NAME>GstAudioEcho::surround-delay</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Enable Surround Delay</NICK>
+<BLURB>Delay Surround Channels when TRUE instead of applying an echo effect.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstAudioEcho::surround-mask</NAME>
+<TYPE>guint64</TYPE>
+<RANGE>>= 1</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Surround Mask</NICK>
+<BLURB>A bitmask of channels that are considered surround and delayed when surround-delay = TRUE.</BLURB>
+<DEFAULT>18446744073709551612</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstAspectRatioCrop::aspect-ratio</NAME>
 <TYPE>GstFraction</TYPE>
 <RANGE></RANGE>
@@ -20135,7 +20265,7 @@
 <FLAGS>rw</FLAGS>
 <NICK>Method</NICK>
 <BLURB>Deinterlace Method.</BLURB>
-<DEFAULT>Television: Full resolution</DEFAULT>
+<DEFAULT>Linear</DEFAULT>
 </ARG>
 
 <ARG>
@@ -20519,6 +20649,46 @@
 </ARG>
 
 <ARG>
+<NAME>GstRtpBin::rfc7273-sync</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Sync on RFC7273 clock</NICK>
+<BLURB>Synchronize received streams to the RFC7273 clock (requires clock and offset to be provided).</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpBin::max-streams</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max Streams</NICK>
+<BLURB>The maximum number of streams to create for one session.</BLURB>
+<DEFAULT>4294967295</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpBin::max-ts-offset</NAME>
+<TYPE>gint64</TYPE>
+<RANGE>>= 0</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max TS Offset</NICK>
+<BLURB>The maximum absolute value of the time offset in (nanoseconds). Note, if the ntp-sync parameter is set the default value is changed to 0 (no limit).</BLURB>
+<DEFAULT>3000000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpBin::max-ts-offset-adjustment</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max Timestamp Offset Adjustment</NICK>
+<BLURB>The maximum number of nanoseconds per frame that time stamp offsets may be adjusted (0 = no limit).</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstRtpJitterBuffer::do-lost</NAME>
 <TYPE>gboolean</TYPE>
 <RANGE></RANGE>
@@ -20604,7 +20774,7 @@
 <RANGE>>= G_MAXULONG</RANGE>
 <FLAGS>rw</FLAGS>
 <NICK>RTX Delay Reorder</NICK>
-<BLURB>Sending retransmission event when this much reordering (-1 automatic).</BLURB>
+<BLURB>Sending retransmission event when this much reordering (0 disable, -1 automatic).</BLURB>
 <DEFAULT>3</DEFAULT>
 </ARG>
 
@@ -20706,6 +20876,56 @@
 <NICK>Max RTCP RTP Time Diff</NICK>
 <BLURB>Maximum amount of time in ms that the RTP time in RTCP SRs is allowed to be ahead (-1 disabled).</BLURB>
 <DEFAULT>1000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpJitterBuffer::rfc7273-sync</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Sync on RFC7273 clock</NICK>
+<BLURB>Synchronize received streams to the RFC7273 clock (requires clock and offset to be provided).</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpJitterBuffer::rtx-deadline</NAME>
+<TYPE>gint</TYPE>
+<RANGE>>= G_MAXULONG</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>RTX Deadline (ms)</NICK>
+<BLURB>The deadline for a valid RTX request in milliseconds. (-1 automatic).</BLURB>
+<DEFAULT>-1</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpJitterBuffer::rtx-stats-timeout</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>RTX Statistics Timeout</NICK>
+<BLURB>The time to wait for a retransmitted packet after it has been considered lost in order to collect statistics (ms).</BLURB>
+<DEFAULT>1000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpJitterBuffer::faststart-min-packets</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Faststart minimum packets</NICK>
+<BLURB>The number of consecutive packets needed to start (set to 0 to disable faststart. The jitterbuffer will by default start after the latency has elapsed).</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpJitterBuffer::max-ts-offset-adjustment</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max Timestamp Offset Adjustment</NICK>
+<BLURB>The maximum number of nanoseconds per frame that time stamp offsets may be adjusted (0 = no limit).</BLURB>
+<DEFAULT>0</DEFAULT>
 </ARG>
 
 <ARG>
@@ -21219,6 +21439,16 @@
 </ARG>
 
 <ARG>
+<NAME>GstFlvMux::metadatacreator</NAME>
+<TYPE>gchar*</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>metadatacreator</NICK>
+<BLURB>The value of metadatacreator in the meta packet.</BLURB>
+<DEFAULT>NULL</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstCapsSetter::caps</NAME>
 <TYPE>GstCaps*</TYPE>
 <RANGE></RANGE>
@@ -21531,11 +21761,11 @@
 <ARG>
 <NAME>GstQTMux::movie-timescale</NAME>
 <TYPE>guint</TYPE>
-<RANGE>>= 1</RANGE>
+<RANGE></RANGE>
 <FLAGS>rwx</FLAGS>
 <NICK>Movie timescale</NICK>
-<BLURB>Timescale to use in the movie (units per second).</BLURB>
-<DEFAULT>1800</DEFAULT>
+<BLURB>Timescale to use in the movie (units per second, 0 == default).</BLURB>
+<DEFAULT>0</DEFAULT>
 </ARG>
 
 <ARG>
@@ -21606,6 +21836,46 @@
 <NICK>Interval at which to update index tables (ns)</NICK>
 <BLURB>When used with reserved-max-duration, periodically updates the index tables with information muxed so far.</BLURB>
 <DEFAULT>18446744073709551615</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstQTMux::interleave-bytes</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (bytes)</NICK>
+<BLURB>Interleave between streams in bytes.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstQTMux::interleave-time</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (time)</NICK>
+<BLURB>Interleave between streams in nanoseconds.</BLURB>
+<DEFAULT>250000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstQTMux::max-raw-audio-drift</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max Raw Audio Drift</NICK>
+<BLURB>Maximum allowed drift of raw audio samples vs. timestamps in nanoseconds.</BLURB>
+<DEFAULT>40000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstQTMux::reserved-prefill</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Reserved Prefill Samples Table</NICK>
+<BLURB>Prefill samples table of reserved duration.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
 </ARG>
 
 <ARG>
@@ -21701,11 +21971,11 @@
 <ARG>
 <NAME>GstMP4Mux::movie-timescale</NAME>
 <TYPE>guint</TYPE>
-<RANGE>>= 1</RANGE>
+<RANGE></RANGE>
 <FLAGS>rwx</FLAGS>
 <NICK>Movie timescale</NICK>
-<BLURB>Timescale to use in the movie (units per second).</BLURB>
-<DEFAULT>1800</DEFAULT>
+<BLURB>Timescale to use in the movie (units per second, 0 == default).</BLURB>
+<DEFAULT>0</DEFAULT>
 </ARG>
 
 <ARG>
@@ -21779,6 +22049,46 @@
 </ARG>
 
 <ARG>
+<NAME>GstMP4Mux::interleave-bytes</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (bytes)</NICK>
+<BLURB>Interleave between streams in bytes.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstMP4Mux::interleave-time</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (time)</NICK>
+<BLURB>Interleave between streams in nanoseconds.</BLURB>
+<DEFAULT>250000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstMP4Mux::max-raw-audio-drift</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max Raw Audio Drift</NICK>
+<BLURB>Maximum allowed drift of raw audio samples vs. timestamps in nanoseconds.</BLURB>
+<DEFAULT>40000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstMP4Mux::reserved-prefill</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Reserved Prefill Samples Table</NICK>
+<BLURB>Prefill samples table of reserved duration.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstMJ2Mux::dts-method</NAME>
 <TYPE>GstQTMuxDtsMethods</TYPE>
 <RANGE></RANGE>
@@ -21831,11 +22141,11 @@
 <ARG>
 <NAME>GstMJ2Mux::movie-timescale</NAME>
 <TYPE>guint</TYPE>
-<RANGE>>= 1</RANGE>
+<RANGE></RANGE>
 <FLAGS>rwx</FLAGS>
 <NICK>Movie timescale</NICK>
-<BLURB>Timescale to use in the movie (units per second).</BLURB>
-<DEFAULT>1800</DEFAULT>
+<BLURB>Timescale to use in the movie (units per second, 0 == default).</BLURB>
+<DEFAULT>0</DEFAULT>
 </ARG>
 
 <ARG>
@@ -21909,6 +22219,46 @@
 </ARG>
 
 <ARG>
+<NAME>GstMJ2Mux::interleave-bytes</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (bytes)</NICK>
+<BLURB>Interleave between streams in bytes.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstMJ2Mux::interleave-time</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (time)</NICK>
+<BLURB>Interleave between streams in nanoseconds.</BLURB>
+<DEFAULT>250000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstMJ2Mux::max-raw-audio-drift</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max Raw Audio Drift</NICK>
+<BLURB>Maximum allowed drift of raw audio samples vs. timestamps in nanoseconds.</BLURB>
+<DEFAULT>40000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstMJ2Mux::reserved-prefill</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Reserved Prefill Samples Table</NICK>
+<BLURB>Prefill samples table of reserved duration.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstISMLMux::dts-method</NAME>
 <TYPE>GstQTMuxDtsMethods</TYPE>
 <RANGE></RANGE>
@@ -21961,11 +22311,11 @@
 <ARG>
 <NAME>GstISMLMux::movie-timescale</NAME>
 <TYPE>guint</TYPE>
-<RANGE>>= 1</RANGE>
+<RANGE></RANGE>
 <FLAGS>rwx</FLAGS>
 <NICK>Movie timescale</NICK>
-<BLURB>Timescale to use in the movie (units per second).</BLURB>
-<DEFAULT>1800</DEFAULT>
+<BLURB>Timescale to use in the movie (units per second, 0 == default).</BLURB>
+<DEFAULT>0</DEFAULT>
 </ARG>
 
 <ARG>
@@ -22039,6 +22389,46 @@
 </ARG>
 
 <ARG>
+<NAME>GstISMLMux::interleave-bytes</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (bytes)</NICK>
+<BLURB>Interleave between streams in bytes.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstISMLMux::interleave-time</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (time)</NICK>
+<BLURB>Interleave between streams in nanoseconds.</BLURB>
+<DEFAULT>250000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstISMLMux::max-raw-audio-drift</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max Raw Audio Drift</NICK>
+<BLURB>Maximum allowed drift of raw audio samples vs. timestamps in nanoseconds.</BLURB>
+<DEFAULT>40000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstISMLMux::reserved-prefill</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Reserved Prefill Samples Table</NICK>
+<BLURB>Prefill samples table of reserved duration.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>Gst3GPPMux::dts-method</NAME>
 <TYPE>GstQTMuxDtsMethods</TYPE>
 <RANGE></RANGE>
@@ -22091,11 +22481,11 @@
 <ARG>
 <NAME>Gst3GPPMux::movie-timescale</NAME>
 <TYPE>guint</TYPE>
-<RANGE>>= 1</RANGE>
+<RANGE></RANGE>
 <FLAGS>rwx</FLAGS>
 <NICK>Movie timescale</NICK>
-<BLURB>Timescale to use in the movie (units per second).</BLURB>
-<DEFAULT>1800</DEFAULT>
+<BLURB>Timescale to use in the movie (units per second, 0 == default).</BLURB>
+<DEFAULT>0</DEFAULT>
 </ARG>
 
 <ARG>
@@ -22166,6 +22556,46 @@
 <NICK>Interval at which to update index tables (ns)</NICK>
 <BLURB>When used with reserved-max-duration, periodically updates the index tables with information muxed so far.</BLURB>
 <DEFAULT>18446744073709551615</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>Gst3GPPMux::interleave-bytes</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (bytes)</NICK>
+<BLURB>Interleave between streams in bytes.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>Gst3GPPMux::interleave-time</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Interleave (time)</NICK>
+<BLURB>Interleave between streams in nanoseconds.</BLURB>
+<DEFAULT>250000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>Gst3GPPMux::max-raw-audio-drift</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Max Raw Audio Drift</NICK>
+<BLURB>Maximum allowed drift of raw audio samples vs. timestamps in nanoseconds.</BLURB>
+<DEFAULT>40000000</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>Gst3GPPMux::reserved-prefill</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Reserved Prefill Samples Table</NICK>
+<BLURB>Prefill samples table of reserved duration.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
 </ARG>
 
 <ARG>
@@ -22381,20 +22811,20 @@
 <ARG>
 <NAME>GstGdkPixbufOverlay::relative-x</NAME>
 <TYPE>gdouble</TYPE>
-<RANGE>[0,1]</RANGE>
+<RANGE>[-1,1]</RANGE>
 <FLAGS>rw</FLAGS>
 <NICK>Relative X Offset</NICK>
-<BLURB>Horizontal offset of overlay image in fractions of video image width, from top-left corner of video image.</BLURB>
+<BLURB>Horizontal offset of overlay image in fractions of video image width, from top-left corner of video image (in relative positioning).</BLURB>
 <DEFAULT>0</DEFAULT>
 </ARG>
 
 <ARG>
 <NAME>GstGdkPixbufOverlay::relative-y</NAME>
 <TYPE>gdouble</TYPE>
-<RANGE>[0,1]</RANGE>
+<RANGE>[-1,1]</RANGE>
 <FLAGS>rw</FLAGS>
 <NICK>Relative Y Offset</NICK>
-<BLURB>Vertical offset of overlay image in fractions of video image height, from top-left corner of video image.</BLURB>
+<BLURB>Vertical offset of overlay image in fractions of video image height, from top-left corner of video image (in relative positioning).</BLURB>
 <DEFAULT>0</DEFAULT>
 </ARG>
 
@@ -22426,6 +22856,26 @@
 <NICK>Positioning mode</NICK>
 <BLURB>Positioning mode of offset-x and offset-y properties.</BLURB>
 <DEFAULT>pixels-relative-to-edges</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstGdkPixbufOverlay::coef-x</NAME>
+<TYPE>gdouble</TYPE>
+<RANGE>[-1,1]</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Relative X Offset</NICK>
+<BLURB>Horizontal offset of overlay image in fractions of video image width, from top-left corner of video image (absolute positioning).</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstGdkPixbufOverlay::coef-y</NAME>
+<TYPE>gdouble</TYPE>
+<RANGE>[-1,1]</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Relative Y Offset</NICK>
+<BLURB>Vertical offset of overlay image in fractions of video image height, from top-left corner of video image (absolute positioning).</BLURB>
+<DEFAULT>0</DEFAULT>
 </ARG>
 
 <ARG>
@@ -23169,6 +23619,26 @@
 </ARG>
 
 <ARG>
+<NAME>GstRTPRtxQueue::fulfilled-requests</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>r</FLAGS>
+<NICK>Fulfilled Requests</NICK>
+<BLURB>Number of fulfilled retransmission requests.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRTPRtxQueue::requests</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>r</FLAGS>
+<NICK>Requests</NICK>
+<BLURB>Total number of retransmission requests.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstRtpGSTPay::config-interval</NAME>
 <TYPE>guint</TYPE>
 <RANGE><= 3600</RANGE>
@@ -23839,6 +24309,46 @@
 </ARG>
 
 <ARG>
+<NAME>GstSplitMuxSink::send-keyframe-requests</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Request keyframes at max-size-time</NICK>
+<BLURB>Request a keyframe every max-size-time ns to try splitting at that point. Needs max-size-bytes to be 0 in order to be effective.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstSplitMuxSink::max-size-timecode</NAME>
+<TYPE>gchar*</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Maximum timecode difference</NICK>
+<BLURB>Maximum difference in timecode between first and last frame. Separator is assumed to be ":" everywhere (e.g. 01:00:00:00). Will only be effective if a timecode track is present.</BLURB>
+<DEFAULT>NULL</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstSplitMuxSink::alignment-threshold</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Alignment threshold (ns)</NICK>
+<BLURB>Allow non-reference streams to be that many ns before the reference stream.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstSplitMuxSink::use-robust-muxing</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Support robust-muxing mode of some muxers</NICK>
+<BLURB>Check if muxers support robust muxing via the reserved-max-duration and reserved-duration-remaining properties and use them if so. (Only present on qtmux and mp4mux for now). splitmuxsink may then also  create new fragments if the reserved header space is about to overflow. Note this does not set reserved-moov-update-period - apps should do that manually.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
 <NAME>GstRtpVP9Pay::picture-id-mode</NAME>
 <TYPE>GstVP9RTPPayMode</TYPE>
 <RANGE></RANGE>
@@ -23866,5 +24376,475 @@
 <NICK>sprop-parameter-sets</NICK>
 <BLURB>The base64 sprop-parameter-sets to set in out caps (set to NULL to extract from stream).</BLURB>
 <DEFAULT>NULL</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstLameMP3Enc::bitrate</NAME>
+<TYPE>gint</TYPE>
+<RANGE>[8,320]</RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Bitrate (kb/s)</NICK>
+<BLURB>Bitrate in kbit/sec (Only valid if target is bitrate, for CBR one of 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256 or 320).</BLURB>
+<DEFAULT>128</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstLameMP3Enc::cbr</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>CBR</NICK>
+<BLURB>Enforce constant bitrate encoding (Only valid if target is bitrate).</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstLameMP3Enc::encoding-engine-quality</NAME>
+<TYPE>GstLameMP3EncEncodingEngineQuality</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Encoding Engine Quality</NICK>
+<BLURB>Quality/speed of the encoding engine, this does not affect the bitrate!.</BLURB>
+<DEFAULT>Standard</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstLameMP3Enc::mono</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Mono</NICK>
+<BLURB>Enforce mono encoding.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstLameMP3Enc::quality</NAME>
+<TYPE>gfloat</TYPE>
+<RANGE>[0,9.999]</RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Quality</NICK>
+<BLURB>VBR Quality from 0 to 10, 0 being the best (Only valid if target is quality).</BLURB>
+<DEFAULT>4</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstLameMP3Enc::target</NAME>
+<TYPE>GstLameMP3EncTarget</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Target</NICK>
+<BLURB>Optimize for quality or bitrate.</BLURB>
+<DEFAULT>Quality</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::ath-level</NAME>
+<TYPE>gfloat</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>ATH Level</NICK>
+<BLURB>ATH Level in dB.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::bitrate</NAME>
+<TYPE>gint</TYPE>
+<RANGE>[8,384]</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Bitrate (kb/s)</NICK>
+<BLURB>Bitrate in kbit/sec (8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 192, 224, 256, 320, 384).</BLURB>
+<DEFAULT>192</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::copyright</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Copyright</NICK>
+<BLURB>Mark as copyright.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::emphasis</NAME>
+<TYPE>GstTwoLameEmphasis</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Emphasis</NICK>
+<BLURB>Pre-emphasis to apply to the decoded audio.</BLURB>
+<DEFAULT>No emphasis</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::energy-level-extension</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Energy Level Extension</NICK>
+<BLURB>Write peak PCM level to each frame.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::error-protection</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Error protection</NICK>
+<BLURB>Adds checksum to every frame.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::mode</NAME>
+<TYPE>GstTwoLameMode</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Mode</NICK>
+<BLURB>Encoding mode.</BLURB>
+<DEFAULT>Joint Stereo</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::original</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Original</NICK>
+<BLURB>Mark as original.</BLURB>
+<DEFAULT>TRUE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::padding</NAME>
+<TYPE>GstTwoLamePadding</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Padding</NICK>
+<BLURB>Padding type.</BLURB>
+<DEFAULT>No Padding</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::psymodel</NAME>
+<TYPE>gint</TYPE>
+<RANGE>[G_MAXULONG,4]</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Psychoacoustic Model</NICK>
+<BLURB>Psychoacoustic model used to encode the audio.</BLURB>
+<DEFAULT>3</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::quick-mode</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Quick mode</NICK>
+<BLURB>Calculate Psymodel every frames.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::quick-mode-count</NAME>
+<TYPE>gint</TYPE>
+<RANGE>>= 0</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Quick mode count</NICK>
+<BLURB>Calculate Psymodel every n frames.</BLURB>
+<DEFAULT>10</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::vbr</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>VBR</NICK>
+<BLURB>Enable variable bitrate mode.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::vbr-level</NAME>
+<TYPE>gfloat</TYPE>
+<RANGE>[-10,10]</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>VBR Level</NICK>
+<BLURB>VBR Level.</BLURB>
+<DEFAULT>5</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstTwoLame::vbr-max-bitrate</NAME>
+<TYPE>gint</TYPE>
+<RANGE>[0,384]</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>VBR max bitrate</NICK>
+<BLURB>Specify maximum VBR bitrate (0=off, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 192, 224, 256, 320, 384).</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpSbcDepay::ignore-timestamps</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Ignore Timestamps</NICK>
+<BLURB>Various statistics.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstQtSrc::use-default-fbo</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Whether to use default FBO</NICK>
+<BLURB>When set it will not create a new FBO for the QML render thread.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstQtSrc::window</NAME>
+<TYPE>gpointer</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>QQuickWindow</NICK>
+<BLURB>The QQuickWindow to place in the object hierarchy.</BLURB>
+<DEFAULT></DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstQtSink::force-aspect-ratio</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Force aspect ratio</NICK>
+<BLURB>When enabled, scaling will respect original aspect ratio.</BLURB>
+<DEFAULT>TRUE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstQtSink::pixel-aspect-ratio</NAME>
+<TYPE>GstFraction</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Pixel Aspect Ratio</NICK>
+<BLURB>The pixel aspect ratio of the device.</BLURB>
+<DEFAULT></DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstQtSink::widget</NAME>
+<TYPE>gpointer</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>QQuickItem</NICK>
+<BLURB>The QQuickItem to place in the object hierarchy.</BLURB>
+<DEFAULT></DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpPtDemux::ignored-payload-types</NAME>
+<TYPE>GstValueArray</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Ignored payload types</NICK>
+<BLURB>Packets with these payload types will be dropped.</BLURB>
+<DEFAULT></DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecEnc::multipacket</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Multipacket</NICK>
+<BLURB>Apply FEC on multiple packets.</BLURB>
+<DEFAULT>TRUE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecEnc::mux-seq</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Mux seq</NICK>
+<BLURB>Mux seqnum for media and fec packets in same seqnum space.</BLURB>
+<DEFAULT>FALSE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecEnc::percentage</NAME>
+<TYPE>guint</TYPE>
+<RANGE><= 100</RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Percentage</NICK>
+<BLURB>FEC overhead percentage for the whole stream.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecEnc::percentage-important</NAME>
+<TYPE>guint</TYPE>
+<RANGE><= 100</RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Percentage important</NICK>
+<BLURB>FEC overhead percentage for important packets.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecEnc::protected</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>r</FLAGS>
+<NICK>Protected</NICK>
+<BLURB>Count of protected packets.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecEnc::pt</NAME>
+<TYPE>guint</TYPE>
+<RANGE><= 255</RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>payload type</NICK>
+<BLURB>The payload type of FEC packets.</BLURB>
+<DEFAULT>255</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecEnc::ssrc</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>SSRC</NICK>
+<BLURB>The SSRC to use on FEC'd packets.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecDec::pt</NAME>
+<TYPE>guint</TYPE>
+<RANGE><= 127</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>pt</NICK>
+<BLURB>FEC packets payload type.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecDec::recovered</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>r</FLAGS>
+<NICK>recovered</NICK>
+<BLURB>The number of recovered packets.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecDec::storage</NAME>
+<TYPE>GObject*</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>RTP storage</NICK>
+<BLURB>RTP storage.</BLURB>
+<DEFAULT></DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpUlpFecDec::unrecovered</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>r</FLAGS>
+<NICK>unrecovered</NICK>
+<BLURB>The number of unrecovered packets.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpStorage::internal-storage</NAME>
+<TYPE>GObject*</TYPE>
+<RANGE></RANGE>
+<FLAGS>r</FLAGS>
+<NICK>Internal storage</NICK>
+<BLURB>Internal RtpStorage object.</BLURB>
+<DEFAULT></DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpStorage::size-time</NAME>
+<TYPE>guint64</TYPE>
+<RANGE></RANGE>
+<FLAGS>rwx</FLAGS>
+<NICK>Storage size (in ns)</NICK>
+<BLURB>The amount of data to keep in the storage (in ns, 0-disable).</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpRedEnc::allow-no-red-blocks</NAME>
+<TYPE>gboolean</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>Allow no redundant blocks</NICK>
+<BLURB>true - can produce RED packets even without redundant blocks (distance==0) false - RED packets will be produced only if distance>0.</BLURB>
+<DEFAULT>TRUE</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpRedEnc::distance</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>RED distance</NICK>
+<BLURB>Tells which media packet to use as a redundant block (0 - no redundant blocks, 1 to use previous packet, 2 to use the packet before previous, etc.).</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpRedEnc::pt</NAME>
+<TYPE>gint</TYPE>
+<RANGE>[0,127]</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>payload type</NICK>
+<BLURB>Payload type FEC packets (-1 disable).</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpRedEnc::sent</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>r</FLAGS>
+<NICK>Sent</NICK>
+<BLURB>Count of sent packets.</BLURB>
+<DEFAULT>0</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpRedDec::pt</NAME>
+<TYPE>gint</TYPE>
+<RANGE>[G_MAXULONG,127]</RANGE>
+<FLAGS>rw</FLAGS>
+<NICK>payload type</NICK>
+<BLURB>Payload type FEC packets.</BLURB>
+<DEFAULT>-1</DEFAULT>
+</ARG>
+
+<ARG>
+<NAME>GstRtpRedDec::received</NAME>
+<TYPE>guint</TYPE>
+<RANGE></RANGE>
+<FLAGS>r</FLAGS>
+<NICK>Received</NICK>
+<BLURB>Count of received packets.</BLURB>
+<DEFAULT>0</DEFAULT>
 </ARG>
 

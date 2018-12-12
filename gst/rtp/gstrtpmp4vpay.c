@@ -95,10 +95,10 @@ G_DEFINE_TYPE (GstRtpMP4VPay, gst_rtp_mp4v_pay, GST_TYPE_RTP_BASE_PAYLOAD)
   gobject_class->set_property = gst_rtp_mp4v_pay_set_property;
   gobject_class->get_property = gst_rtp_mp4v_pay_get_property;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_mp4v_pay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_mp4v_pay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_mp4v_pay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_mp4v_pay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP MPEG4 Video payloader", "Codec/Payloader/Network/RTP",
@@ -287,8 +287,7 @@ gst_rtp_mp4v_pay_flush (GstRtpMP4VPay * rtpmp4vpay)
     gst_rtp_buffer_map (outbuf, GST_MAP_WRITE, &rtp);
     gst_rtp_buffer_set_marker (&rtp, avail == 0);
     gst_rtp_buffer_unmap (&rtp);
-    gst_rtp_copy_meta (GST_ELEMENT_CAST (rtpmp4vpay), outbuf, outbuf_data,
-        g_quark_from_static_string (GST_META_TAG_VIDEO_STR));
+    gst_rtp_copy_video_meta (rtpmp4vpay, outbuf, outbuf_data);
     outbuf = gst_buffer_append (outbuf, outbuf_data);
 
     GST_BUFFER_PTS (outbuf) = rtpmp4vpay->first_timestamp;
@@ -473,23 +472,32 @@ gst_rtp_mp4v_pay_handle_buffer (GstRTPBasePayload * basepayload,
 
       size = gst_buffer_get_size (buffer);
     } else {
+      GstClockTime running_time =
+          gst_segment_to_running_time (&basepayload->segment, GST_FORMAT_TIME,
+          timestamp);
+
       GST_LOG_OBJECT (rtpmp4vpay, "found config in stream");
-      rtpmp4vpay->last_config = timestamp;
+      rtpmp4vpay->last_config = running_time;
     }
   }
 
   /* there is a config request, see if we need to insert it */
   if (vopi && (rtpmp4vpay->config_interval > 0) && rtpmp4vpay->config) {
+    GstClockTime running_time =
+        gst_segment_to_running_time (&basepayload->segment, GST_FORMAT_TIME,
+        timestamp);
+
     if (rtpmp4vpay->last_config != -1) {
       guint64 diff;
 
       GST_LOG_OBJECT (rtpmp4vpay,
           "now %" GST_TIME_FORMAT ", last VOP-I %" GST_TIME_FORMAT,
-          GST_TIME_ARGS (timestamp), GST_TIME_ARGS (rtpmp4vpay->last_config));
+          GST_TIME_ARGS (running_time),
+          GST_TIME_ARGS (rtpmp4vpay->last_config));
 
       /* calculate diff between last config in milliseconds */
-      if (timestamp > rtpmp4vpay->last_config) {
-        diff = timestamp - rtpmp4vpay->last_config;
+      if (running_time > rtpmp4vpay->last_config) {
+        diff = running_time - rtpmp4vpay->last_config;
       } else {
         diff = 0;
       }
@@ -498,7 +506,6 @@ gst_rtp_mp4v_pay_handle_buffer (GstRTPBasePayload * basepayload,
           "interval since last config %" GST_TIME_FORMAT, GST_TIME_ARGS (diff));
 
       /* bigger than interval, queue config */
-      /* FIXME should convert timestamps to running time */
       if (GST_TIME_AS_SECONDS (diff) >= rtpmp4vpay->config_interval) {
         GST_DEBUG_OBJECT (rtpmp4vpay, "time to send config");
         send_config = TRUE;
@@ -519,8 +526,8 @@ gst_rtp_mp4v_pay_handle_buffer (GstRTPBasePayload * basepayload,
       GST_BUFFER_PTS (buffer) = timestamp;
       size = gst_buffer_get_size (buffer);
 
-      if (timestamp != -1) {
-        rtpmp4vpay->last_config = timestamp;
+      if (running_time != -1) {
+        rtpmp4vpay->last_config = running_time;
       }
     }
   }

@@ -64,6 +64,12 @@
   "alignment = (string) au, " \
   COMMON_VIDEO_CAPS
 
+#define H265_CAPS \
+  "video/x-h265, " \
+  "stream-format = (string) { hvc1, hev1 }, " \
+  "alignment = (string) au, " \
+  COMMON_VIDEO_CAPS
+
 #define MPEG4V_CAPS \
   "video/mpeg, " \
   "mpegversion = (int) 4, "\
@@ -74,7 +80,12 @@
   COMMON_VIDEO_CAPS
 
 #define PRORES_CAPS \
-  "video/x-prores, variant = (string) {standard, lt, hq, proxy}, " \
+  "video/x-prores, " \
+  "variant = (string) {standard, lt, hq, proxy, 4444, 4444xq}, " \
+  COMMON_VIDEO_CAPS
+
+#define CINEFORM_CAPS \
+  "video/x-cineform, " \
   COMMON_VIDEO_CAPS
 
 #define SVQ_CAPS \
@@ -97,6 +108,13 @@
   "format = (string) { S32LE, S32BE, S24LE, S24BE, S16LE, S16BE, S8, U8 }, " \
   "layout = (string) interleaved, " \
   COMMON_AUDIO_CAPS (2, MAX)
+
+#define PCM_CAPS_UNPOSITIONED \
+  "audio/x-raw, " \
+  "format = (string) { S32LE, S32BE, S24LE, S24BE, S16LE, S16BE, S8, U8 }, " \
+  "layout = (string) interleaved, " \
+  "channel-mask = (bitmask) 0, " \
+  COMMON_AUDIO_CAPS (16, MAX)
 
 #define MP3_CAPS \
   "audio/mpeg, " \
@@ -164,25 +182,33 @@ GstQTMuxFormatProp gst_qt_mux_format_list[] = {
             COMMON_VIDEO_CAPS "; "
             MPEG4V_CAPS "; "
             PRORES_CAPS "; "
+            CINEFORM_CAPS "; "
             H263_CAPS "; "
             H264_CAPS "; "
+            H265_CAPS "; "
             SVQ_CAPS "; "
             "video/x-dv, "
             "systemstream = (boolean) false, "
             COMMON_VIDEO_CAPS "; "
             "image/jpeg, "
             COMMON_VIDEO_CAPS_NO_FRAMERATE "; "
+            "image/png, "
+            COMMON_VIDEO_CAPS_NO_FRAMERATE "; "
             "video/x-vp8, "
+            COMMON_VIDEO_CAPS "; "
+            "video/x-vp9, "
             COMMON_VIDEO_CAPS "; "
             "video/x-dirac, "
             COMMON_VIDEO_CAPS "; " "video/x-qt-part, " COMMON_VIDEO_CAPS),
         GST_STATIC_CAPS (PCM_CAPS_FULL "; "
-            MP3_CAPS " ; "
+            PCM_CAPS_UNPOSITIONED " ; "
+            MP123_CAPS " ; "
             AAC_CAPS " ; "
+            AC3_CAPS " ; "
             ADPCM_CAPS " ; "
             "audio/x-alaw, " COMMON_AUDIO_CAPS (2, MAX) "; "
             "audio/x-mulaw, " COMMON_AUDIO_CAPS (2, MAX) "; "
-            AMR_CAPS " ; " ALAC_CAPS),
+            AMR_CAPS " ; " ALAC_CAPS " ; " OPUS_CAPS),
       GST_STATIC_CAPS (TEXT_UTF8)}
   ,
   /* ISO 14496-14: mp42 as ISO base media extension
@@ -194,7 +220,7 @@ GstQTMuxFormatProp gst_qt_mux_format_list[] = {
         "MP4",
         "GstMP4Mux",
         GST_STATIC_CAPS ("video/quicktime, variant = (string) iso"),
-        GST_STATIC_CAPS (MPEG4V_CAPS "; " H264_CAPS ";"
+        GST_STATIC_CAPS (MPEG4V_CAPS "; " H264_CAPS ";" H265_CAPS ";"
             "video/x-mp4-part," COMMON_VIDEO_CAPS),
         GST_STATIC_CAPS (MP123_CAPS "; "
             AAC_CAPS " ; " AC3_CAPS " ; " ALAC_CAPS " ; " OPUS_CAPS),

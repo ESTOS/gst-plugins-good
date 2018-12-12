@@ -69,13 +69,19 @@ enum
   PROP_WRITING_APP,
   PROP_DOCTYPE_VERSION,
   PROP_MIN_INDEX_INTERVAL,
-  PROP_STREAMABLE
+  PROP_STREAMABLE,
+  PROP_TIMECODESCALE,
+  PROP_MIN_CLUSTER_DURATION,
+  PROP_MAX_CLUSTER_DURATION
 };
 
 #define  DEFAULT_DOCTYPE_VERSION         2
 #define  DEFAULT_WRITING_APP             "GStreamer Matroska muxer"
 #define  DEFAULT_MIN_INDEX_INTERVAL      0
 #define  DEFAULT_STREAMABLE              FALSE
+#define  DEFAULT_TIMECODESCALE           GST_MSECOND
+#define  DEFAULT_MIN_CLUSTER_DURATION    500 * GST_MSECOND
+#define  DEFAULT_MAX_CLUSTER_DURATION    65535 * GST_MSECOND
 
 /* WAVEFORMATEX is gst_riff_strf_auds + an extra guint16 extension size */
 #define WAVEFORMATEX_SIZE  (2 + sizeof (gst_riff_strf_auds))
@@ -87,8 +93,8 @@ static GstStaticPadTemplate src_templ = GST_STATIC_PAD_TEMPLATE ("src",
     );
 
 #define COMMON_VIDEO_CAPS \
-  "width = (int) [ 16, 4096 ], " \
-  "height = (int) [ 16, 4096 ] "
+  "width = (int) [ 16, MAX ], " \
+  "height = (int) [ 16, MAX ] "
 
 /* FIXME:
  * * require codec data, etc as needed
@@ -188,6 +194,8 @@ static GstStaticPadTemplate audiosink_templ =
         "layout = (string)dvi, "
         "block_align = (int)[64, 8192], "
         "channels = (int) { 1, 2 }, " "rate = (int) [ 8000, 96000 ]; "
+        "audio/G722, "
+        "channels = (int)1," "rate = (int)16000; "
         "audio/x-adpcm, "
         "layout = (string)g726, " "channels = (int)1," "rate = (int)8000; ")
     );
@@ -296,14 +304,13 @@ gst_matroska_mux_class_init (GstMatroskaMuxClass * klass)
   gobject_class = (GObjectClass *) klass;
   gstelement_class = (GstElementClass *) klass;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&videosink_templ));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&audiosink_templ));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&subtitlesink_templ));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&src_templ));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &videosink_templ);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &audiosink_templ);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &subtitlesink_templ);
+  gst_element_class_add_static_pad_template (gstelement_class, &src_templ);
   gst_element_class_set_static_metadata (gstelement_class, "Matroska muxer",
       "Codec/Muxer",
       "Muxes video/audio/subtitle streams into a matroska stream",
@@ -336,6 +343,25 @@ gst_matroska_mux_class_init (GstMatroskaMuxClass * klass)
           "be streamable", "If set to true, the output should be as if it is "
           "to be streamed and hence no indexes written or duration written.",
           DEFAULT_STREAMABLE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_TIMECODESCALE,
+      g_param_spec_int64 ("timecodescale", "Timecode Scale",
+          "TimecodeScale used to calculate the Raw Timecode of a Block", 1,
+          GST_SECOND, DEFAULT_TIMECODESCALE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_MIN_CLUSTER_DURATION,
+      g_param_spec_int64 ("min-cluster-duration", "Minimum cluster duration",
+          "Desidered cluster duration as nanoseconds. A new cluster will be "
+          "created irrespective of this property if a force key unit event "
+          "is received. 0 means create a new cluster for each video keyframe "
+          "or for each audio buffer in audio only streams.", 0,
+          G_MAXINT64, DEFAULT_MIN_CLUSTER_DURATION,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_MAX_CLUSTER_DURATION,
+      g_param_spec_int64 ("max-cluster-duration", "Maximum cluster duration",
+          "A new cluster will be created if its duration exceeds this value. "
+          "0 means no maximum duration.", 0,
+          G_MAXINT64, DEFAULT_MAX_CLUSTER_DURATION,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gstelement_class->change_state =
       GST_DEBUG_FUNCPTR (gst_matroska_mux_change_state);
@@ -351,7 +377,6 @@ gst_matroska_mux_class_init (GstMatroskaMuxClass * klass)
  * Start of pad option handler code
  */
 #define DEFAULT_PAD_FRAME_DURATION TRUE
-#define DEFAULT_PAD_FRAME_DURATION_VP8 FALSE
 
 enum
 {
@@ -463,6 +488,9 @@ gst_matroska_mux_init (GstMatroskaMux * mux, gpointer g_class)
   mux->writing_app = g_strdup (DEFAULT_WRITING_APP);
   mux->min_index_interval = DEFAULT_MIN_INDEX_INTERVAL;
   mux->ebml_write->streamable = DEFAULT_STREAMABLE;
+  mux->time_scale = DEFAULT_TIMECODESCALE;
+  mux->min_cluster_duration = DEFAULT_MIN_CLUSTER_DURATION;
+  mux->max_cluster_duration = DEFAULT_MAX_CLUSTER_DURATION;
 
   /* initialize internal variables */
   mux->index = NULL;
@@ -470,6 +498,7 @@ gst_matroska_mux_init (GstMatroskaMux * mux, gpointer g_class)
   mux->num_a_streams = 0;
   mux->num_t_streams = 0;
   mux->num_v_streams = 0;
+  mux->internal_toc = NULL;
 
   /* create used uid list */
   mux->used_uids = g_array_sized_new (FALSE, FALSE, sizeof (guint64), 10);
@@ -497,6 +526,11 @@ gst_matroska_mux_finalize (GObject * object)
   g_free (mux->writing_app);
 
   g_array_free (mux->used_uids, TRUE);
+
+  if (mux->internal_toc) {
+    gst_toc_unref (mux->internal_toc);
+    mux->internal_toc = NULL;
+  }
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -656,8 +690,6 @@ gst_matroska_mux_reset (GstElement * element)
   mux->index = NULL;
 
   /* reset timers */
-  mux->time_scale = GST_MSECOND;
-  mux->max_cluster_duration = G_MAXINT16 * mux->time_scale;
   mux->duration = 0;
 
   /* reset cluster */
@@ -673,6 +705,10 @@ gst_matroska_mux_reset (GstElement * element)
 
   /* reset chapters */
   gst_toc_setter_reset (GST_TOC_SETTER (mux));
+  if (mux->internal_toc) {
+    gst_toc_unref (mux->internal_toc);
+    mux->internal_toc = NULL;
+  }
 
   mux->chapters_pos = 0;
 
@@ -689,7 +725,7 @@ gst_matroska_mux_reset (GstElement * element)
  *
  * handle events - copied from oggmux without understanding
  *
- * Returns: #TRUE on success.
+ * Returns: %TRUE on success.
  */
 static gboolean
 gst_matroska_mux_handle_src_event (GstPad * pad, GstObject * parent,
@@ -766,7 +802,7 @@ gst_matroska_mux_build_vobsub_private (GstMatroskaTrackContext * context,
  *
  * handle events - informational ones like tags
  *
- * Returns: #TRUE on success.
+ * Returns: %TRUE on success.
  */
 static gboolean
 gst_matroska_mux_handle_sink_event (GstCollectPads * pads,
@@ -922,7 +958,7 @@ gst_matroska_mux_set_codec_id (GstMatroskaTrackContext * context,
  *
  * Setcaps function for video sink pad.
  *
- * Returns: #TRUE on success.
+ * Returns: %TRUE on success.
  */
 static gboolean
 gst_matroska_mux_video_pad_setcaps (GstPad * pad, GstCaps * caps)
@@ -938,8 +974,21 @@ gst_matroska_mux_video_pad_setcaps (GstPad * pad, GstCaps * caps)
   GstBuffer *codec_buf = NULL;
   gint width, height, pixel_width, pixel_height;
   gint fps_d, fps_n;
+  guint multiview_flags;
+  GstCaps *old_caps;
 
   mux = GST_MATROSKA_MUX (GST_PAD_PARENT (pad));
+
+  if ((old_caps = gst_pad_get_current_caps (pad))) {
+    if (mux->state >= GST_MATROSKA_MUX_STATE_HEADER
+        && !gst_caps_is_equal (caps, old_caps)) {
+      GST_ELEMENT_ERROR (mux, STREAM, MUX, (NULL),
+          ("Caps changed are not supported by Matroska"));
+      gst_caps_unref (old_caps);
+      goto refuse_caps;
+    }
+    gst_caps_unref (old_caps);
+  }
 
   /* find context */
   collect_pad = (GstMatroskaPad *) gst_pad_get_element_private (pad);
@@ -972,13 +1021,6 @@ gst_matroska_mux_video_pad_setcaps (GstPad * pad, GstCaps * caps)
   videocontext->pixel_width = width;
   videocontext->pixel_height = height;
 
-  /* set vp8 defaults or let user override it */
-  if (GST_MATROSKAMUX_PAD_CAST (pad)->frame_duration_user == FALSE
-      && (!strcmp (mimetype, "video/x-vp8")
-          || !strcmp (mimetype, "video/x-vp9")))
-    GST_MATROSKAMUX_PAD_CAST (pad)->frame_duration =
-        DEFAULT_PAD_FRAME_DURATION_VP8;
-
   if (GST_MATROSKAMUX_PAD_CAST (pad)->frame_duration
       && gst_structure_get_fraction (structure, "framerate", &fps_n, &fps_d)
       && fps_n > 0) {
@@ -1010,8 +1052,9 @@ gst_matroska_mux_video_pad_setcaps (GstPad * pad, GstCaps * caps)
   if ((s = gst_structure_get_string (structure, "multiview-mode")))
     videocontext->multiview_mode =
         gst_video_multiview_mode_from_caps_string (s);
-  gst_structure_get_flagset (structure, "multiview-flags",
-      &videocontext->multiview_flags, NULL);
+  gst_structure_get_flagset (structure, "multiview-flags", &multiview_flags,
+      NULL);
+  videocontext->multiview_flags = multiview_flags;
 
 
 skip_details:
@@ -1179,6 +1222,8 @@ skip_details:
     gst_matroska_mux_set_codec_id (context, GST_MATROSKA_CODEC_ID_VIDEO_VP8);
   } else if (!strcmp (mimetype, "video/x-vp9")) {
     gst_matroska_mux_set_codec_id (context, GST_MATROSKA_CODEC_ID_VIDEO_VP9);
+  } else if (!strcmp (mimetype, "video/x-av1")) {
+    gst_matroska_mux_set_codec_id (context, GST_MATROSKA_CODEC_ID_VIDEO_AV1);
   } else if (!strcmp (mimetype, "video/mpeg")) {
     gint mpegversion;
 
@@ -1739,7 +1784,7 @@ opus_make_codecdata (GstMatroskaTrackContext * context, GstCaps * caps)
  *
  * Setcaps function for audio sink pad.
  *
- * Returns: #TRUE on success.
+ * Returns: %TRUE on success.
  */
 static gboolean
 gst_matroska_mux_audio_pad_setcaps (GstPad * pad, GstCaps * caps)
@@ -1754,8 +1799,20 @@ gst_matroska_mux_audio_pad_setcaps (GstPad * pad, GstCaps * caps)
   const GValue *codec_data = NULL;
   GstBuffer *buf = NULL;
   const gchar *stream_format = NULL;
+  GstCaps *old_caps;
 
   mux = GST_MATROSKA_MUX (GST_PAD_PARENT (pad));
+
+  if ((old_caps = gst_pad_get_current_caps (pad))) {
+    if (mux->state >= GST_MATROSKA_MUX_STATE_HEADER
+        && !gst_caps_is_equal (caps, old_caps)) {
+      GST_ELEMENT_ERROR (mux, STREAM, MUX, (NULL),
+          ("Caps changed are not supported by Matroska"));
+      gst_caps_unref (old_caps);
+      goto refuse_caps;
+    }
+    gst_caps_unref (old_caps);
+  }
 
   /* find context */
   collect_pad = (GstMatroskaPad *) gst_pad_get_element_private (pad);
@@ -2024,7 +2081,8 @@ gst_matroska_mux_audio_pad_setcaps (GstPad * pad, GstCaps * caps)
   } else if (!strcmp (mimetype, "audio/x-wma")
       || !strcmp (mimetype, "audio/x-alaw")
       || !strcmp (mimetype, "audio/x-mulaw")
-      || !strcmp (mimetype, "audio/x-adpcm")) {
+      || !strcmp (mimetype, "audio/x-adpcm")
+      || !strcmp (mimetype, "audio/G722")) {
     guint8 *codec_priv;
     guint codec_priv_size;
     guint16 format = 0;
@@ -2102,6 +2160,8 @@ gst_matroska_mux_audio_pad_setcaps (GstPad * pad, GstCaps * caps)
         goto refuse_caps;
       }
 
+    } else if (!strcmp (mimetype, "audio/G722")) {
+      format = GST_RIFF_WAVE_FORMAT_ADPCM_G722;
     }
     g_assert (format != 0);
 
@@ -2157,7 +2217,7 @@ refuse_caps:
  *
  * Setcaps function for subtitle sink pad.
  *
- * Returns: #TRUE on success.
+ * Returns: %TRUE on success.
  */
 static gboolean
 gst_matroska_mux_subtitle_pad_setcaps (GstPad * pad, GstCaps * caps)
@@ -2175,8 +2235,20 @@ gst_matroska_mux_subtitle_pad_setcaps (GstPad * pad, GstCaps * caps)
   const GValue *value = NULL;
   GstBuffer *buf = NULL;
   gboolean ret = TRUE;
+  GstCaps *old_caps;
 
   mux = GST_MATROSKA_MUX (GST_PAD_PARENT (pad));
+
+  if ((old_caps = gst_pad_get_current_caps (pad))) {
+    if (mux->state >= GST_MATROSKA_MUX_STATE_HEADER
+        && !gst_caps_is_equal (caps, old_caps)) {
+      GST_ELEMENT_ERROR (mux, STREAM, MUX, (NULL),
+          ("Caps changed are not supported by Matroska"));
+      gst_caps_unref (old_caps);
+      goto refuse_caps;
+    }
+    gst_caps_unref (old_caps);
+  }
 
   /* find context */
   collect_pad = (GstMatroskaPad *) gst_pad_get_element_private (pad);
@@ -2259,6 +2331,14 @@ gst_matroska_mux_subtitle_pad_setcaps (GstPad * pad, GstCaps * caps)
 exit:
 
   return ret;
+
+  /* ERRORS */
+refuse_caps:
+  {
+    GST_WARNING_OBJECT (mux, "pad %s refused caps %" GST_PTR_FORMAT,
+        GST_PAD_NAME (pad), caps);
+    return FALSE;
+  }
 }
 
 
@@ -2585,7 +2665,6 @@ gst_matroska_mux_track_header (GstMatroskaMux * mux,
   }
 }
 
-#if 0
 static void
 gst_matroska_mux_write_chapter_title (const gchar * title, GstEbmlWrite * ebml)
 {
@@ -2601,17 +2680,20 @@ gst_matroska_mux_write_chapter_title (const gchar * title, GstEbmlWrite * ebml)
   gst_ebml_write_master_finish (ebml, title_master);
 }
 
-static void
+static GstTocEntry *
 gst_matroska_mux_write_chapter (GstMatroskaMux * mux, GstTocEntry * edition,
     GstTocEntry * entry, GstEbmlWrite * ebml, guint64 * master_chapters,
     guint64 * master_edition)
 {
-  guint64 uid, master_chapteratom;
+  guint64 master_chapteratom;
   GList *cur;
-  GstTocEntry *cur_entry;
   guint count, i;
   gchar *title;
   gint64 start, stop;
+  guint64 uid;
+  gchar s_uid[32];
+  GstTocEntry *internal_chapter, *internal_nested;
+  GstTagList *tags;
 
   if (G_UNLIKELY (master_chapters != NULL && *master_chapters == 0))
     *master_chapters =
@@ -2619,78 +2701,111 @@ gst_matroska_mux_write_chapter (GstMatroskaMux * mux, GstTocEntry * edition,
 
   if (G_UNLIKELY (master_edition != NULL && *master_edition == 0)) {
     /* create uid for the parent */
-    uid = gst_matroska_mux_create_uid ();
-    g_free (edition->uid);
-    edition->uid = g_strdup_printf ("%" G_GUINT64_FORMAT, uid);
-
     *master_edition =
         gst_ebml_write_master_start (ebml, GST_MATROSKA_ID_EDITIONENTRY);
 
-    gst_ebml_write_uint (ebml, GST_MATROSKA_ID_EDITIONUID, uid);
+    gst_ebml_write_uint (ebml, GST_MATROSKA_ID_EDITIONUID,
+        g_ascii_strtoull (gst_toc_entry_get_uid (edition), NULL, 10));
     gst_ebml_write_uint (ebml, GST_MATROSKA_ID_EDITIONFLAGHIDDEN, 0);
     gst_ebml_write_uint (ebml, GST_MATROSKA_ID_EDITIONFLAGDEFAULT, 0);
     gst_ebml_write_uint (ebml, GST_MATROSKA_ID_EDITIONFLAGORDERED, 0);
   }
 
-  uid = gst_matroska_mux_create_uid ();
   gst_toc_entry_get_start_stop_times (entry, &start, &stop);
+  tags = gst_toc_entry_get_tags (entry);
+  if (tags != NULL) {
+    tags = gst_tag_list_copy (tags);
+  }
 
+  /* build internal chapter */
+  uid = gst_matroska_mux_create_uid (mux);
+  g_snprintf (s_uid, sizeof (s_uid), "%" G_GINT64_FORMAT, uid);
+  internal_chapter = gst_toc_entry_new (GST_TOC_ENTRY_TYPE_CHAPTER, s_uid);
+
+  /* Write the chapter entry */
   master_chapteratom =
       gst_ebml_write_master_start (ebml, GST_MATROSKA_ID_CHAPTERATOM);
-  g_free (entry->uid);
-  entry->uid = g_strdup_printf ("%" G_GUINT64_FORMAT, uid);
+
   gst_ebml_write_uint (ebml, GST_MATROSKA_ID_CHAPTERUID, uid);
+  /* Store the user provided UID in the ChapterStringUID */
+  gst_ebml_write_utf8 (ebml, GST_MATROSKA_ID_CHAPTERSTRINGUID,
+      gst_toc_entry_get_uid (entry));
   gst_ebml_write_uint (ebml, GST_MATROSKA_ID_CHAPTERTIMESTART, start);
   gst_ebml_write_uint (ebml, GST_MATROSKA_ID_CHAPTERTIMESTOP, stop);
   gst_ebml_write_uint (ebml, GST_MATROSKA_ID_CHAPTERFLAGHIDDEN, 0);
   gst_ebml_write_uint (ebml, GST_MATROSKA_ID_CHAPTERFLAGENABLED, 1);
 
-  cur = entry->subentries;
-  while (cur != NULL) {
-    cur_entry = cur->data;
-    gst_matroska_mux_write_chapter (mux, NULL, cur_entry, ebml, NULL, NULL);
-
-    cur = cur->next;
-  }
-
-  if (G_LIKELY (entry->tags != NULL)) {
-    count = gst_tag_list_get_tag_size (entry->tags, GST_TAG_TITLE);
+  /* write current ChapterDisplays before the nested chapters */
+  if (G_LIKELY (tags != NULL)) {
+    count = gst_tag_list_get_tag_size (tags, GST_TAG_TITLE);
 
     for (i = 0; i < count; ++i) {
-      gst_tag_list_get_string_index (entry->tags, GST_TAG_TITLE, i, &title);
+      gst_tag_list_get_string_index (tags, GST_TAG_TITLE, i, &title);
+      /* FIXME: handle ChapterLanguage entries */
       gst_matroska_mux_write_chapter_title (title, ebml);
       g_free (title);
     }
 
     /* remove title tag */
     if (G_LIKELY (count > 0))
-      gst_tag_list_remove_tag (entry->tags, GST_TAG_TITLE);
+      gst_tag_list_remove_tag (tags, GST_TAG_TITLE);
+
+    gst_toc_entry_set_tags (internal_chapter, tags);
+  }
+
+  /* Write nested chapters */
+  for (cur = gst_toc_entry_get_sub_entries (entry); cur != NULL;
+      cur = cur->next) {
+    internal_nested = gst_matroska_mux_write_chapter (mux, NULL, cur->data,
+        ebml, NULL, NULL);
+
+    gst_toc_entry_append_sub_entry (internal_chapter, internal_nested);
   }
 
   gst_ebml_write_master_finish (ebml, master_chapteratom);
+
+  return internal_chapter;
 }
 
-static void
+static GstTocEntry *
 gst_matroska_mux_write_chapter_edition (GstMatroskaMux * mux,
-    GstTocEntry * entry, GstEbmlWrite * ebml, guint64 * master_chapters)
+    GstTocEntry * edition, GList * chapters, GstEbmlWrite * ebml,
+    guint64 * master_chapters)
 {
   guint64 master_edition = 0;
+  gchar s_uid[32];
   GList *cur;
-  GstTocEntry *subentry;
+  GstTocEntry *internal_edition, *internal_chapter;
+  GstTagList *tags = NULL;
 
-  cur = gst_toc_entry_get_sub_entries (entry);
-  while (cur != NULL) {
-    subentry = cur->data;
-    gst_matroska_mux_write_chapter (mux, entry, subentry, ebml, master_chapters,
-        &master_edition);
+  g_snprintf (s_uid, sizeof (s_uid), "%" G_GINT64_FORMAT,
+      gst_matroska_mux_create_uid (mux));
 
-    cur = cur->next;
+  if (edition != NULL) {
+    /* Edition entry defined, get its tags */
+    tags = gst_toc_entry_get_tags (edition);
+    if (tags != NULL) {
+      tags = gst_tag_list_copy (tags);
+    }
+  }
+
+  internal_edition = gst_toc_entry_new (GST_TOC_ENTRY_TYPE_EDITION, s_uid);
+  if (tags != NULL) {
+    gst_toc_entry_set_tags (internal_edition, tags);
+  }
+
+  for (cur = g_list_first (chapters); cur != NULL; cur = cur->next) {
+    internal_chapter = gst_matroska_mux_write_chapter (mux, internal_edition,
+        cur->data, ebml, master_chapters, &master_edition);
+
+    gst_toc_entry_append_sub_entry (internal_edition, internal_chapter);
   }
 
   if (G_LIKELY (master_edition != 0))
     gst_ebml_write_master_finish (ebml, master_edition);
+
+  return internal_edition;
 }
-#endif
 
 /**
  * gst_matroska_mux_start:
@@ -2699,7 +2814,8 @@ gst_matroska_mux_write_chapter_edition (GstMatroskaMux * mux,
  * Start a new matroska file (write headers etc...)
  */
 static void
-gst_matroska_mux_start (GstMatroskaMux * mux)
+gst_matroska_mux_start (GstMatroskaMux * mux, GstMatroskaPad * first_pad,
+    GstBuffer * first_pad_buf)
 {
   GstEbmlWrite *ebml = mux->ebml_write;
   const gchar *doctype;
@@ -2720,9 +2836,7 @@ gst_matroska_mux_start (GstMatroskaMux * mux)
   guint32 segment_uid[4];
   GTimeVal time = { 0, 0 };
   gchar s_id[32];
-#if 0
   GstToc *toc;
-#endif
 
   /* if not streaming, check if downstream is seekable */
   if (!mux->ebml_write->streamable) {
@@ -2869,12 +2983,30 @@ gst_matroska_mux_start (GstMatroskaMux * mux)
   for (collected = mux->collect->data; collected;
       collected = g_slist_next (collected)) {
     GstMatroskaPad *collect_pad;
+    GstBuffer *buf;
 
     collect_pad = (GstMatroskaPad *) collected->data;
 
     /* This will cause an error at a later time */
     if (collect_pad->track->codec_id == NULL)
       continue;
+
+    /* For audio tracks, use the first buffers duration as the default
+     * duration if we didn't get any better idea from the caps event already
+     */
+    if (collect_pad->track->type == GST_MATROSKA_TRACK_TYPE_AUDIO &&
+        collect_pad->track->default_duration == 0) {
+      if (collect_pad == first_pad)
+        buf = first_pad_buf ? gst_buffer_ref (first_pad_buf) : NULL;
+      else
+        buf = gst_collect_pads_peek (mux->collect, collected->data);
+
+      if (buf && GST_BUFFER_DURATION_IS_VALID (buf))
+        collect_pad->track->default_duration =
+            GST_BUFFER_DURATION (buf) + collect_pad->track->codec_delay;
+      if (buf)
+        gst_buffer_unref (buf);
+    }
 
     collect_pad->track->num = tracknum++;
     child = gst_ebml_write_master_start (ebml, GST_MATROSKA_ID_TRACKENTRY);
@@ -2887,77 +3019,66 @@ gst_matroska_mux_start (GstMatroskaMux * mux)
   }
   gst_ebml_write_master_finish (ebml, master);
 
-  /* FIXME: Check if we get a TOC that is supported by Matroska
-   * and clean up the code below */
-#if 0
   /* chapters */
   toc = gst_toc_setter_get_toc (GST_TOC_SETTER (mux));
   if (toc != NULL && !mux->ebml_write->streamable) {
     guint64 master_chapters = 0;
-    GstTocEntry *toc_entry;
-    GList *cur, *to_write = NULL;
-    gint64 start, stop;
+    GstTocEntry *internal_edition;
+    GList *cur, *chapters;
 
     GST_DEBUG ("Writing chapters");
 
-    /* check whether we have editions or chapters at the root level */
-    toc_entry = toc->entries->data;
+    /* There are two UIDs for Chapters:
+     * - The ChapterUID is a mandatory unsigned integer which internally
+     * refers to a given chapter. Except for the title & language which use
+     * dedicated fields, this UID can also be used to add tags to the Chapter.
+     * The tags come in a separate section of the container.
+     * - The ChapterStringUID is an optional UTF-8 string which also uniquely
+     * refers to a chapter but from an external perspective. It can act as a
+     * "WebVTT cue identifier" which "can be used to reference a specific cue,
+     * for example from script or CSS".
+     *
+     * The ChapterUID will be generated and checked for unicity, while the
+     * ChapterStringUID will receive the user defined UID.
+     *
+     * In order to be able to refer to chapters from the tags section,
+     * we must maintain an internal Toc tree with the generated ChapterUID
+     * (see gst_matroska_mux_write_toc_entry_tags) */
 
-    if (toc_entry->type != GST_TOC_ENTRY_TYPE_EDITION) {
-      toc_entry = gst_toc_entry_new (GST_TOC_ENTRY_TYPE_EDITION, "");
-      gst_toc_entry_set_start_stop_times (toc_entry, -1, -1);
+    /* Check whether we have editions or chapters at the root level. */
+    cur = gst_toc_get_entries (toc);
+    if (cur != NULL) {
+      mux->chapters_pos = ebml->pos;
 
-      /* aggregate all chapters without root edition */
-      cur = gst_toc_get_entries (toc);
-      while (cur != NULL) {
-        toc_entry->subentries =
-            g_list_prepend (toc_entry->subentries, cur->data);
-        cur = cur->next;
+      mux->internal_toc = gst_toc_new (GST_TOC_SCOPE_GLOBAL);
+
+      if (gst_toc_entry_get_entry_type (cur->data) ==
+          GST_TOC_ENTRY_TYPE_EDITION) {
+        /* Editions at the root level */
+        for (; cur != NULL; cur = cur->next) {
+          chapters = gst_toc_entry_get_sub_entries (cur->data);
+          internal_edition = gst_matroska_mux_write_chapter_edition (mux,
+              cur->data, chapters, ebml, &master_chapters);
+          gst_toc_append_entry (mux->internal_toc, internal_edition);
+        }
+      } else {
+        /* Chapters at the root level */
+        internal_edition = gst_matroska_mux_write_chapter_edition (mux,
+            NULL, cur, ebml, &master_chapters);
+        gst_toc_append_entry (mux->internal_toc, internal_edition);
       }
 
-      gst_toc_entry_get_start_stop_times (((GstTocEntry *)
-              toc_entry->subentries->data), &start, NULL);
-      toc_entry->subentries = g_list_reverse (toc_entry->subentries);
-      gst_toc_entry_get_start_stop_times (((GstTocEntry *)
-              toc_entry->subentries->data), NULL, &stop);
-      gst_toc_entry_set_start_stop_times (toc_entry, start, stop);
-
-      to_write = g_list_append (to_write, toc_entry);
-    } else {
-      toc_entry = NULL;
-      to_write = toc->entries;
-    }
-
-    /* finally write chapters */
-    mux->chapters_pos = ebml->pos;
-
-    cur = to_write;
-    while (cur != NULL) {
-      gst_matroska_mux_write_chapter_edition (mux, cur->data, ebml,
-          &master_chapters);
-      cur = cur->next;
-    }
-
-    /* close master element if any edition was written */
-    if (G_LIKELY (master_chapters != 0))
-      gst_ebml_write_master_finish (ebml, master_chapters);
-
-    if (toc_entry != NULL) {
-      g_list_free (toc_entry->subentries);
-      toc_entry->subentries = NULL;
-      gst_toc_entry_unref (toc_entry);
-      g_list_free (to_write);
+      /* close master element if any edition was written */
+      if (G_LIKELY (master_chapters != 0))
+        gst_ebml_write_master_finish (ebml, master_chapters);
     }
   }
-#endif
 
   /* lastly, flush the cache */
   gst_ebml_write_flush_cache (ebml, FALSE, 0);
 
-#if 0
   if (toc != NULL)
     gst_toc_unref (toc);
-#endif
 }
 
 /* TODO: more sensible tag mappings */
@@ -3103,19 +3224,21 @@ gst_matroska_mux_streams_have_tags (GstMatroskaMux * mux)
   return FALSE;
 }
 
-#if 0
 static void
 gst_matroska_mux_write_toc_entry_tags (GstMatroskaMux * mux,
-    const GstTocEntry * entry, guint64 * master_tags)
+    const GstTocEntry * entry, guint64 * master_tags, gboolean * has_tags)
 {
   guint64 master_tag, master_targets;
   GstEbmlWrite *ebml;
   GList *cur;
+  const GstTagList *tags;
 
   ebml = mux->ebml_write;
 
-  if (G_UNLIKELY (entry->tags != NULL
-          && !gst_matroska_mux_tag_list_is_empty (entry->tags))) {
+  tags = gst_toc_entry_get_tags (entry);
+  if (G_UNLIKELY (tags != NULL && !gst_matroska_mux_tag_list_is_empty (tags))) {
+    *has_tags = TRUE;
+
     if (*master_tags == 0) {
       mux->tags_pos = ebml->pos;
       *master_tags = gst_ebml_write_master_start (ebml, GST_MATROSKA_ID_TAGS);
@@ -3125,25 +3248,24 @@ gst_matroska_mux_write_toc_entry_tags (GstMatroskaMux * mux,
     master_targets =
         gst_ebml_write_master_start (ebml, GST_MATROSKA_ID_TARGETS);
 
-    if (entry->type == GST_TOC_ENTRY_TYPE_EDITION)
+    if (gst_toc_entry_get_entry_type (entry) == GST_TOC_ENTRY_TYPE_EDITION)
       gst_ebml_write_uint (ebml, GST_MATROSKA_ID_TARGETEDITIONUID,
-          g_ascii_strtoull (entry->uid, NULL, 10));
+          g_ascii_strtoull (gst_toc_entry_get_uid (entry), NULL, 10));
     else
       gst_ebml_write_uint (ebml, GST_MATROSKA_ID_TARGETCHAPTERUID,
-          g_ascii_strtoull (entry->uid, NULL, 10));
+          g_ascii_strtoull (gst_toc_entry_get_uid (entry), NULL, 10));
 
     gst_ebml_write_master_finish (ebml, master_targets);
-    gst_tag_list_foreach (entry->tags, gst_matroska_mux_write_simple_tag, ebml);
+    gst_tag_list_foreach (tags, gst_matroska_mux_write_simple_tag, ebml);
     gst_ebml_write_master_finish (ebml, master_tag);
   }
 
-  cur = entry->subentries;
-  while (cur != NULL) {
-    gst_matroska_mux_write_toc_entry_tags (mux, cur->data, master_tags);
-    cur = cur->next;
+  for (cur = gst_toc_entry_get_sub_entries (entry); cur != NULL;
+      cur = cur->next) {
+    gst_matroska_mux_write_toc_entry_tags (mux, cur->data, master_tags,
+        has_tags);
   }
 }
-#endif
 
 /**
  * gst_matroska_mux_finish:
@@ -3158,8 +3280,10 @@ gst_matroska_mux_finish (GstMatroskaMux * mux)
   guint64 pos;
   guint64 duration = 0;
   GSList *collected;
-  const GstTagList *tags;
-  gboolean has_main_tags;
+  const GstTagList *tags, *toc_tags;
+  const GstToc *toc;
+  gboolean has_main_tags, toc_has_tags = FALSE;
+  GList *cur;
 
   /* finish last cluster */
   if (mux->cluster) {
@@ -3198,19 +3322,12 @@ gst_matroska_mux_finish (GstMatroskaMux * mux)
   /* tags */
   tags = gst_tag_setter_get_tag_list (GST_TAG_SETTER (mux));
   has_main_tags = tags != NULL && !gst_matroska_mux_tag_list_is_empty (tags);
+  toc = gst_toc_setter_get_toc (GST_TOC_SETTER (mux));
 
-  if (has_main_tags || gst_matroska_mux_streams_have_tags (mux)
-      || gst_toc_setter_get_toc (GST_TOC_SETTER (mux)) != NULL) {
+  if (has_main_tags || gst_matroska_mux_streams_have_tags (mux) || toc != NULL) {
     guint64 master_tags = 0, master_tag;
-#if 0
-    const GstToc *toc;
-#endif
 
     GST_DEBUG_OBJECT (mux, "Writing tags");
-
-#if 0
-    toc = gst_toc_setter_get_toc (GST_TOC_SETTER (mux));
-#endif
 
     if (has_main_tags) {
       /* TODO: maybe limit via the TARGETS id by looking at the source pad */
@@ -3220,23 +3337,23 @@ gst_matroska_mux_finish (GstMatroskaMux * mux)
 
       if (tags != NULL)
         gst_tag_list_foreach (tags, gst_matroska_mux_write_simple_tag, ebml);
-#if 0
-      if (toc != NULL)
-        gst_tag_list_foreach (toc->tags, gst_matroska_mux_write_simple_tag,
+      if (mux->internal_toc != NULL) {
+        toc_tags = gst_toc_get_tags (mux->internal_toc);
+        toc_has_tags = (toc_tags != NULL);
+        gst_tag_list_foreach (toc_tags, gst_matroska_mux_write_simple_tag,
             ebml);
-#endif
+      }
 
       gst_ebml_write_master_finish (ebml, master_tag);
     }
-#if 0
-    if (toc != NULL) {
-      cur = toc->entries;
-      while (cur != NULL) {
-        gst_matroska_mux_write_toc_entry_tags (mux, cur->data, &master_tags);
-        cur = cur->next;
+
+    if (mux->internal_toc != NULL) {
+      for (cur = gst_toc_get_entries (mux->internal_toc); cur != NULL;
+          cur = cur->next) {
+        gst_matroska_mux_write_toc_entry_tags (mux, cur->data, &master_tags,
+            &toc_has_tags);
       }
     }
-#endif
 
     if (master_tags == 0 && gst_matroska_mux_streams_have_tags (mux)) {
       mux->tags_pos = ebml->pos;
@@ -3262,8 +3379,7 @@ gst_matroska_mux_finish (GstMatroskaMux * mux)
       mux->info_pos - mux->segment_master);
   gst_ebml_replace_uint (ebml, mux->seekhead_pos + 60,
       mux->tracks_pos - mux->segment_master);
-  if (gst_toc_setter_get_toc (GST_TOC_SETTER (mux)) != NULL
-      && mux->chapters_pos > 0) {
+  if (toc != NULL && mux->chapters_pos > 0) {
     gst_ebml_replace_uint (ebml, mux->seekhead_pos + 88,
         mux->chapters_pos - mux->segment_master);
   } else {
@@ -3286,7 +3402,7 @@ gst_matroska_mux_finish (GstMatroskaMux * mux)
     gst_ebml_write_seek (ebml, my_pos);
   }
 
-  if (tags != NULL) {
+  if (tags != NULL || toc_has_tags) {
     gst_ebml_replace_uint (ebml, mux->seekhead_pos + 144,
         mux->tags_pos - mux->segment_master);
   } else {
@@ -3296,6 +3412,10 @@ gst_matroska_mux_finish (GstMatroskaMux * mux)
     gst_ebml_write_seek (ebml, mux->seekhead_pos + 124);
     gst_ebml_write_buffer_header (ebml, GST_EBML_ID_VOID, 26);
     gst_ebml_write_seek (ebml, my_pos);
+  }
+
+  if (toc != NULL) {
+    gst_toc_unref (toc);
   }
 
   /* loop tracks:
@@ -3520,6 +3640,9 @@ gst_matroska_mux_write_data (GstMatroskaMux * mux, GstMatroskaPad * collect_pad,
   guint64 block_duration, duration_diff = 0;
   gboolean is_video_keyframe = FALSE;
   gboolean is_video_invisible = FALSE;
+  gboolean is_audio_only = FALSE;
+  gboolean is_min_duration_reached = FALSE;
+  gboolean is_max_duration_exceeded = FALSE;
   GstMatroskamuxPad *pad;
   gint flags = 0;
   GstClockTime buffer_timestamp;
@@ -3530,10 +3653,12 @@ gst_matroska_mux_write_data (GstMatroskaMux * mux, GstMatroskaPad * collect_pad,
 
   /* vorbis/theora headers are retrieved from caps and put in CodecPrivate */
   if (collect_pad->track->xiph_headers_to_skip > 0) {
-    GST_LOG_OBJECT (collect_pad->collect.pad, "dropping streamheader buffer");
-    gst_buffer_unref (buf);
     --collect_pad->track->xiph_headers_to_skip;
-    return GST_FLOW_OK;
+    if (GST_BUFFER_FLAG_IS_SET (buf, GST_BUFFER_FLAG_HEADER)) {
+      GST_LOG_OBJECT (collect_pad->collect.pad, "dropping streamheader buffer");
+      gst_buffer_unref (buf);
+      return GST_FLOW_OK;
+    }
   }
 
   /* for dirac we have to queue up everything up to a picture unit */
@@ -3592,12 +3717,23 @@ gst_matroska_mux_write_data (GstMatroskaMux * mux, GstMatroskaPad * collect_pad,
     }
   }
 
+  is_audio_only = (collect_pad->track->type == GST_MATROSKA_TRACK_TYPE_AUDIO) &&
+      (mux->num_streams == 1);
+  is_min_duration_reached = (mux->min_cluster_duration == 0
+      || (buffer_timestamp > mux->cluster_time
+          && (buffer_timestamp - mux->cluster_time) >=
+          mux->min_cluster_duration));
+  is_max_duration_exceeded = (mux->max_cluster_duration > 0
+      && buffer_timestamp > mux->cluster_time
+      && (buffer_timestamp - mux->cluster_time) >=
+      MIN (G_MAXINT16 * mux->time_scale, mux->max_cluster_duration));
+
   if (mux->cluster) {
     /* start a new cluster at every keyframe, at every GstForceKeyUnit event,
      * or when we may be reaching the limit of the relative timestamp */
-    if (mux->cluster_time +
-        mux->max_cluster_duration < buffer_timestamp
-        || is_video_keyframe || mux->force_key_unit_event) {
+    if (is_max_duration_exceeded || (is_video_keyframe
+            && is_min_duration_reached) || mux->force_key_unit_event
+        || (is_audio_only && is_min_duration_reached)) {
       if (!mux->ebml_write->streamable)
         gst_ebml_write_master_finish (ebml, mux->cluster);
 
@@ -3616,7 +3752,8 @@ gst_matroska_mux_write_data (GstMatroskaMux * mux, GstMatroskaPad * collect_pad,
           gst_util_uint64_scale (buffer_timestamp, 1, mux->time_scale));
       GST_LOG_OBJECT (mux, "cluster timestamp %" G_GUINT64_FORMAT,
           gst_util_uint64_scale (buffer_timestamp, 1, mux->time_scale));
-      gst_ebml_write_flush_cache (ebml, TRUE, buffer_timestamp);
+      gst_ebml_write_flush_cache (ebml, is_video_keyframe
+          || is_audio_only, buffer_timestamp);
       mux->cluster_time = buffer_timestamp;
       gst_ebml_write_uint (ebml, GST_MATROSKA_ID_PREVSIZE,
           mux->prev_cluster_size);
@@ -3641,10 +3778,7 @@ gst_matroska_mux_write_data (GstMatroskaMux * mux, GstMatroskaPad * collect_pad,
    * the block in the cluster which contains the timestamp, should also work
    * for files with multiple audio tracks.
    */
-  if (!mux->ebml_write->streamable &&
-      (is_video_keyframe ||
-          ((collect_pad->track->type == GST_MATROSKA_TRACK_TYPE_AUDIO) &&
-              (mux->num_streams == 1)))) {
+  if (!mux->ebml_write->streamable && (is_video_keyframe || is_audio_only)) {
     gint last_idx = -1;
 
     if (mux->min_index_interval != 0) {
@@ -3778,7 +3912,7 @@ gst_matroska_mux_handle_buffer (GstCollectPads * pads, GstCollectData * data,
   GstClockTime buffer_timestamp;
   GstMatroskaMux *mux = GST_MATROSKA_MUX (user_data);
   GstEbmlWrite *ebml = mux->ebml_write;
-  GstMatroskaPad *best;
+  GstMatroskaPad *best = (GstMatroskaPad *) data;
   GstFlowReturn ret = GST_FLOW_OK;
   GST_DEBUG_OBJECT (mux, "Collected pads");
 
@@ -3791,13 +3925,10 @@ gst_matroska_mux_handle_buffer (GstCollectPads * pads, GstCollectData * data,
     }
     mux->state = GST_MATROSKA_MUX_STATE_HEADER;
     gst_ebml_start_streamheader (ebml);
-    gst_matroska_mux_start (mux);
+    gst_matroska_mux_start (mux, best, buf);
     gst_matroska_mux_stop_streamheader (mux);
     mux->state = GST_MATROSKA_MUX_STATE_DATA;
   }
-
-  /* provided with stream to write from */
-  best = (GstMatroskaPad *) data;
 
   /* if there is no best pad, we have reached EOS */
   if (best == NULL) {
@@ -3929,6 +4060,15 @@ gst_matroska_mux_set_property (GObject * object,
     case PROP_STREAMABLE:
       mux->ebml_write->streamable = g_value_get_boolean (value);
       break;
+    case PROP_TIMECODESCALE:
+      mux->time_scale = g_value_get_int64 (value);
+      break;
+    case PROP_MIN_CLUSTER_DURATION:
+      mux->min_cluster_duration = g_value_get_int64 (value);
+      break;
+    case PROP_MAX_CLUSTER_DURATION:
+      mux->max_cluster_duration = g_value_get_int64 (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -3956,6 +4096,15 @@ gst_matroska_mux_get_property (GObject * object,
       break;
     case PROP_STREAMABLE:
       g_value_set_boolean (value, mux->ebml_write->streamable);
+      break;
+    case PROP_TIMECODESCALE:
+      g_value_set_int64 (value, mux->time_scale);
+      break;
+    case PROP_MIN_CLUSTER_DURATION:
+      g_value_set_int64 (value, mux->min_cluster_duration);
+      break;
+    case PROP_MAX_CLUSTER_DURATION:
+      g_value_set_int64 (value, mux->max_cluster_duration);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);

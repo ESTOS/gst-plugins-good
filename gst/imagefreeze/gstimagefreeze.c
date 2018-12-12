@@ -101,10 +101,10 @@ gst_image_freeze_class_init (GstImageFreezeClass * klass)
       "Generates a still frame stream from an image",
       "Sebastian Dröge <sebastian.droege@collabora.co.uk>");
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&sink_pad_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&src_pad_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &sink_pad_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &src_pad_template);
 }
 
 static void
@@ -265,10 +265,6 @@ gst_image_freeze_sink_getcaps (GstImageFreeze * self, GstCaps * filter)
   GstPad *pad;
 
   pad = self->sinkpad;
-  ret = gst_pad_get_current_caps (pad);
-  if (ret != NULL) {
-    goto done;
-  }
 
   if (filter) {
     filter = gst_caps_copy (filter);
@@ -292,7 +288,6 @@ gst_image_freeze_sink_getcaps (GstImageFreeze * self, GstCaps * filter)
   ret = gst_caps_make_writable (ret);
   gst_image_freeze_remove_fps (self, ret);
 
-done:
   GST_LOG_OBJECT (pad, "Returning caps: %" GST_PTR_FORMAT, ret);
 
   return ret;
@@ -491,6 +486,13 @@ gst_image_freeze_src_query (GstPad * pad, GstObject * parent, GstQuery * query)
       ret = TRUE;
       break;
     }
+    case GST_QUERY_LATENCY:
+      /* This will only return an accurate latency for the first buffer since
+       * all further buffers outputted by us are just copies of that one, and
+       * the latency is 0 in that case. However, latency changes are not
+       * straightforward, so let's do the conservative fix for now. */
+      ret = gst_pad_query_default (pad, parent, query);
+      break;
     default:
       ret = FALSE;
       break;
@@ -571,6 +573,7 @@ gst_image_freeze_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
       gboolean flush;
       guint32 seqnum;
 
+      seqnum = gst_event_get_seqnum (event);
       gst_event_parse_seek (event, &rate, &format, &flags, &start_type, &start,
           &stop_type, &stop);
       gst_event_unref (event);
@@ -598,7 +601,6 @@ gst_image_freeze_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
         }
       }
 
-      seqnum = gst_event_get_seqnum (event);
       if (flush) {
         GstEvent *e;
 
@@ -846,9 +848,7 @@ pause_task:
     } else if (flow_ret == GST_FLOW_NOT_LINKED || flow_ret < GST_FLOW_EOS) {
       GstEvent *e = gst_event_new_eos ();
 
-      GST_ELEMENT_ERROR (self, STREAM, FAILED,
-          ("Internal data stream error."),
-          ("stream stopped, reason %s", reason));
+      GST_ELEMENT_FLOW_ERROR (self, flow_ret);
 
       if (self->seqnum)
         gst_event_set_seqnum (e, self->seqnum);

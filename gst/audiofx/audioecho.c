@@ -32,11 +32,18 @@
  * will be used. This can only be set before going to the PAUSED or PLAYING
  * state and will be set to the current delay by default.
  *
+ * audioecho can also be used to apply a configurable delay to audio channels
+ * by setting surround-delay=true. In that mode, it just delays "surround
+ * channels" by the delay amount instead of performing an echo. The
+ * channels that are configured surround channels for the delay are
+ * selected using the surround-channels mask property.
+ *
  * <refsect2>
- * <title>Example launch line</title>
+ * <title>Example launch lines</title>
  * |[
  * gst-launch-1.0 autoaudiosrc ! audioconvert ! audioecho delay=500000000 intensity=0.6 feedback=0.4 ! audioconvert ! autoaudiosink
  * gst-launch-1.0 filesrc location="melo1.ogg" ! decodebin ! audioconvert ! audioecho delay=50000000 intensity=0.6 feedback=0.4 ! audioconvert ! autoaudiosink
+ * gst-launch-1.0 audiotestsrc ! audioconvert ! audio/x-raw,channels=4 ! audioecho surround-delay=true delay=500000000 ! audioconvert ! autoaudiosink
  * ]|
  * </refsect2>
  */
@@ -55,13 +62,18 @@
 #define GST_CAT_DEFAULT gst_audio_echo_debug
 GST_DEBUG_CATEGORY_STATIC (GST_CAT_DEFAULT);
 
+/* Everything except the first 2 channels are considered surround */
+#define DEFAULT_SURROUND_MASK ~((guint64)(0x3))
+
 enum
 {
   PROP_0,
   PROP_DELAY,
   PROP_MAX_DELAY,
   PROP_INTENSITY,
-  PROP_FEEDBACK
+  PROP_FEEDBACK,
+  PROP_SUR_DELAY,
+  PROP_SUR_MASK
 };
 
 #define ALLOWED_CAPS \
@@ -135,6 +147,19 @@ gst_audio_echo_class_init (GstAudioEchoClass * klass)
           0.0, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS
           | GST_PARAM_CONTROLLABLE));
 
+  g_object_class_install_property (gobject_class, PROP_SUR_DELAY,
+      g_param_spec_boolean ("surround-delay", "Enable Surround Delay",
+          "Delay Surround Channels when TRUE instead of applying an echo effect",
+          FALSE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_CONTROLLABLE));
+
+  g_object_class_install_property (gobject_class, PROP_SUR_MASK,
+      g_param_spec_uint64 ("surround-mask", "Surround Mask",
+          "A bitmask of channels that are considered surround and delayed when surround-delay = TRUE",
+          1, G_MAXUINT64, DEFAULT_SURROUND_MASK,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+
   gst_element_class_set_static_metadata (gstelement_class, "Audio echo",
       "Filter/Effect/Audio",
       "Adds an echo or reverb effect to an audio stream",
@@ -158,6 +183,8 @@ gst_audio_echo_init (GstAudioEcho * self)
   self->max_delay = 1;
   self->intensity = 0.0;
   self->feedback = 0.0;
+  self->surdelay = FALSE;
+  self->surround_mask = DEFAULT_SURROUND_MASK;
 
   g_mutex_init (&self->lock);
 
@@ -242,6 +269,18 @@ gst_audio_echo_set_property (GObject * object, guint prop_id,
       g_mutex_unlock (&self->lock);
       break;
     }
+    case PROP_SUR_DELAY:{
+      g_mutex_lock (&self->lock);
+      self->surdelay = g_value_get_boolean (value);
+      g_mutex_unlock (&self->lock);
+      break;
+    }
+    case PROP_SUR_MASK:{
+      g_mutex_lock (&self->lock);
+      self->surround_mask = g_value_get_uint64 (value);
+      g_mutex_unlock (&self->lock);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -275,6 +314,17 @@ gst_audio_echo_get_property (GObject * object, guint prop_id,
       g_value_set_float (value, self->feedback);
       g_mutex_unlock (&self->lock);
       break;
+    case PROP_SUR_DELAY:
+      g_mutex_lock (&self->lock);
+      g_value_set_boolean (value, self->surdelay);
+      g_mutex_unlock (&self->lock);
+      break;
+    case PROP_SUR_MASK:{
+      g_mutex_lock (&self->lock);
+      g_value_set_uint64 (value, self->surround_mask);
+      g_mutex_unlock (&self->lock);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -333,33 +383,68 @@ gst_audio_echo_transform_##name (GstAudioEcho * self, \
 { \
   type *buffer = (type *) self->buffer; \
   guint channels = GST_AUDIO_FILTER_CHANNELS (self); \
-  guint rate = GST_AUDIO_FILTER_RATE (self); \
   guint i, j; \
-  guint echo_index = self->buffer_size_frames - self->delay_frames; \
-  gdouble echo_off = ((((gdouble) self->delay) * rate) / GST_SECOND) - self->delay_frames; \
+  guint echo_offset = self->buffer_size_frames - self->delay_frames; \
+  gdouble intensity = self->intensity; \
+  gdouble feedback = self->feedback; \
+  guint buffer_pos = self->buffer_pos; \
+  guint buffer_size_frames = self->buffer_size_frames; \
   \
-  if (echo_off < 0.0) \
-    echo_off = 0.0; \
-  \
-  num_samples /= channels; \
-  \
-  for (i = 0; i < num_samples; i++) { \
-    guint echo0_index = ((echo_index + self->buffer_pos) % self->buffer_size_frames) * channels; \
-    guint echo1_index = ((echo_index + self->buffer_pos +1) % self->buffer_size_frames) * channels; \
-    guint rbout_index = (self->buffer_pos % self->buffer_size_frames) * channels; \
-    for (j = 0; j < channels; j++) { \
-      gdouble in = data[i*channels + j]; \
-      gdouble echo0 = buffer[echo0_index + j]; \
-      gdouble echo1 = buffer[echo1_index + j]; \
-      gdouble echo = echo0 + (echo1-echo0)*echo_off; \
-      type out = in + self->intensity * echo; \
+  if (self->surdelay == FALSE) { \
+    guint read_pos = ((echo_offset + buffer_pos) % buffer_size_frames) * channels; \
+    guint write_pos = (buffer_pos % buffer_size_frames) * channels; \
+    guint buffer_size = buffer_size_frames * channels; \
+    for (i = 0; i < num_samples; i++) { \
+      gdouble in = *data; \
+      gdouble echo = buffer[read_pos]; \
+      type out = in + intensity * echo; \
       \
-      data[i*channels + j] = out; \
+      *data = out; \
       \
-      buffer[rbout_index + j] = in + self->feedback * echo; \
+      buffer[write_pos] = in + feedback * echo; \
+      read_pos = (read_pos + 1) % buffer_size; \
+      write_pos = (write_pos + 1) % buffer_size; \
+      data++; \
     } \
-    self->buffer_pos = (self->buffer_pos + 1) % self->buffer_size_frames; \
+    buffer_pos = write_pos / channels; \
+  } else { \
+    guint64 surround_mask = self->surround_mask; \
+    guint read_pos = ((echo_offset + buffer_pos) % buffer_size_frames) * channels; \
+    guint write_pos = (buffer_pos % buffer_size_frames) * channels; \
+    guint buffer_size = buffer_size_frames * channels; \
+    \
+    num_samples /= channels; \
+    \
+    for (i = 0; i < num_samples; i++) { \
+      guint64 channel_mask = 1; \
+      \
+      for (j = 0; j < channels; j++) { \
+        if (channel_mask & surround_mask) { \
+          gdouble in = data[j]; \
+          gdouble echo = buffer[read_pos + j]; \
+          type out = echo; \
+          \
+          data[j] = out; \
+          \
+          buffer[write_pos + j] = in; \
+        } else { \
+          gdouble in = data[j]; \
+          gdouble echo = buffer[read_pos + j]; \
+          type out = in + intensity * echo; \
+          \
+          data[j] = out; \
+          \
+          buffer[write_pos + j] = in + feedback * echo; \
+        } \
+        channel_mask <<= 1; \
+      } \
+      read_pos = (read_pos + channels) % buffer_size; \
+      write_pos = (write_pos + channels) % buffer_size; \
+      data += channels; \
+    } \
+    buffer_pos = write_pos / channels; \
   } \
+  self->buffer_pos = buffer_pos; \
 }
 
 TRANSFORM_FUNC (float, gfloat);

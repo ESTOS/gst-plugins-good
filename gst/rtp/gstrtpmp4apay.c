@@ -84,10 +84,10 @@ G_DEFINE_TYPE (GstRtpMP4APay, gst_rtp_mp4a_pay, GST_TYPE_RTP_BASE_PAYLOAD)
   gstrtpbasepayload_class->set_caps = gst_rtp_mp4a_pay_setcaps;
   gstrtpbasepayload_class->handle_buffer = gst_rtp_mp4a_pay_handle_buffer;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_mp4a_pay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_mp4a_pay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_mp4a_pay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_mp4a_pay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP MPEG4 audio payloader", "Codec/Payloader/Network/RTP",
@@ -435,8 +435,7 @@ gst_rtp_mp4a_pay_handle_buffer (GstRTPBasePayload * basepayload,
         offset, payload_len);
 
     /* join memory parts */
-    gst_rtp_copy_meta (GST_ELEMENT_CAST (rtpmp4apay), outbuf, paybuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_copy_audio_meta (rtpmp4apay, outbuf, paybuf);
     outbuf = gst_buffer_append (outbuf, paybuf);
     gst_buffer_list_add (list, outbuf);
     offset += payload_len;

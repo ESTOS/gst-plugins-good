@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: gst-plugins-good 1.0.3\n"
 "Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2016-04-20 15:30+0300\n"
+"POT-Creation-Date: 2017-05-04 15:05+0300\n"
 "PO-Revision-Date: 2012-12-22 20:13+0900\n"
 "Last-Translator: Takeshi Hamasaki <hmatrjp@users.sourceforge.jp>\n"
 "Language-Team: Japanese <translation-team-ja@lists.sourceforge.net>\n"
@@ -36,9 +36,6 @@ msgstr "サーバーへ接続できません"
 msgid "No URL set."
 msgstr "URLが指定されていません。"
 
-msgid "Server does not support seeking."
-msgstr "サーバーはシークをサポートしていません。"
-
 msgid "Could not resolve server name."
 msgstr "サーバー名を解決できません。"
 
@@ -56,8 +53,8 @@ msgstr "ネットワークエラーが発生したか、サーバーが予期せ
 msgid "Server sent bad data."
 msgstr "サーバが不正なデータを送信しました。"
 
-msgid "Internal data stream error."
-msgstr "内部データストリームエラー"
+msgid "Server does not support seeking."
+msgstr "サーバーはシークをサポートしていません。"
 
 # SUN REVIEWED
 msgid "No or invalid input audio, AVI stream will be corrupt."
@@ -89,9 +86,6 @@ msgid "This file contains too many streams. Only playing first %d"
 msgstr ""
 "このファイルには多くのストリームが格納されているため、最初の %d 個のみ再生し"
 "ます"
-
-msgid "Internal data flow error."
-msgstr "内部データフローエラー。"
 
 msgid ""
 "No supported stream was found. You might need to install a GStreamer RTSP "
@@ -277,11 +271,12 @@ msgid "Video device returned invalid dimensions."
 msgstr ""
 
 #, fuzzy
-msgid "Video devices uses an unsupported interlacing method."
+msgid "Video device uses an unsupported interlacing method."
 msgstr "デバイス '%s' のドライバはIOメソッド%dをサポートしていません"
 
-msgid "Video devices uses an unsupported pixel format."
-msgstr ""
+#, fuzzy
+msgid "Video device uses an unsupported pixel format."
+msgstr "デバイス '%s' のドライバはIOメソッド%dをサポートしていません"
 
 #, fuzzy
 msgid "Failed to configure internal buffer pool."
@@ -449,6 +444,12 @@ msgstr "実行時の解像度変更はサポートされていません。"
 
 msgid "Cannot operate without a clock"
 msgstr "クロックなしでは動作できません。"
+
+#~ msgid "Internal data stream error."
+#~ msgstr "内部データストリームエラー"
+
+#~ msgid "Internal data flow error."
+#~ msgstr "内部データフローエラー。"
 
 #~ msgid "Device '%s' does not support video capture"
 #~ msgstr "デバイス '%s' はビデオキャプチャをサポートしていません"

@@ -139,10 +139,10 @@ gst_rtp_h263p_pay_class_init (GstRtpH263PPayClass * klass)
           DEFAULT_FRAGMENTATION_MODE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_h263p_pay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_h263p_pay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_h263p_pay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_h263p_pay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class, "RTP H263 payloader",
       "Codec/Payloader/Network/RTP",
@@ -254,8 +254,9 @@ gst_rtp_h263p_pay_sink_getcaps (GstRTPBasePayload * payload, GstPad * pad,
   if (!peercaps || gst_caps_is_any (peercaps)) {
     if (peercaps)
       gst_caps_unref (peercaps);
-    return
+    caps =
         gst_pad_get_pad_template_caps (GST_RTP_BASE_PAYLOAD_SINKPAD (payload));
+    goto done;
   }
 
   /* We basically need to differentiate two use-cases here: One where there's
@@ -264,9 +265,12 @@ gst_rtp_h263p_pay_sink_getcaps (GstRTPBasePayload * payload, GstPad * pad,
    * we want it to produce. The second case is simply payloader ! depayloader
    * where we are dealing with the depayloader's template caps. In this case
    * we should accept any input compatible with our sink template caps. */
-  if (!gst_caps_is_fixed (peercaps))
-    return
+  if (!gst_caps_is_fixed (peercaps)) {
+    gst_caps_unref (peercaps);
+    caps =
         gst_pad_get_pad_template_caps (GST_RTP_BASE_PAYLOAD_SINKPAD (payload));
+    goto done;
+  }
 
   templ = gst_pad_get_pad_template_caps (GST_RTP_BASE_PAYLOAD_SRCPAD (payload));
   intersect = gst_caps_intersect (peercaps, templ);
@@ -601,6 +605,18 @@ gst_rtp_h263p_pay_sink_getcaps (GstRTPBasePayload * payload, GstPad * pad,
 
   gst_caps_unref (intersect);
 
+done:
+
+  if (filter) {
+    GstCaps *tmp;
+
+    GST_DEBUG_OBJECT (payload, "Intersect %" GST_PTR_FORMAT " and filter %"
+        GST_PTR_FORMAT, caps, filter);
+    tmp = gst_caps_intersect_full (filter, caps, GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref (caps);
+    caps = tmp;
+  }
+
   return caps;
 }
 
@@ -737,8 +753,7 @@ gst_rtp_h263p_pay_flush (GstRtpH263PPay * rtph263ppay)
     gst_rtp_buffer_unmap (&rtp);
 
     payload_buf = gst_adapter_take_buffer_fast (rtph263ppay->adapter, towrite);
-    gst_rtp_copy_meta (GST_ELEMENT_CAST (rtph263ppay), outbuf, payload_buf,
-        g_quark_from_static_string (GST_META_TAG_VIDEO_STR));
+    gst_rtp_copy_video_meta (rtph263ppay, outbuf, payload_buf);
     outbuf = gst_buffer_append (outbuf, payload_buf);
     avail -= towrite;
 

@@ -100,10 +100,10 @@ gst_rtp_ac3_pay_class_init (GstRtpAC3PayClass * klass)
 
   gstelement_class->change_state = gst_rtp_ac3_pay_change_state;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_ac3_pay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_ac3_pay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_ac3_pay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_ac3_pay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP AC3 audio payloader", "Codec/Payloader/Network/RTP",
@@ -323,8 +323,8 @@ gst_rtp_ac3_pay_flush (GstRtpAC3Pay * rtpac3pay)
 
     payload_buffer =
         gst_adapter_take_buffer_fast (rtpac3pay->adapter, payload_len);
-    gst_rtp_copy_meta (GST_ELEMENT_CAST (rtpac3pay), outbuf, payload_buffer,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+
+    gst_rtp_copy_audio_meta (rtpac3pay, outbuf, payload_buffer);
 
     outbuf = gst_buffer_append (outbuf, payload_buffer);
 

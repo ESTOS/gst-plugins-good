@@ -107,8 +107,9 @@ struct _GstMatroskaMux {
  
   /* timescale in the file */
   guint64        time_scale;
-  /* based on timescale, limit of nanoseconds you can have in a cluster */ 
+  /* minimum and maximum limit of nanoseconds you can have in a cluster */
   guint64        max_cluster_duration;
+  guint64        min_cluster_duration;
 
   /* length, position (time, ns) */
   guint64        duration;
@@ -133,6 +134,9 @@ struct _GstMatroskaMux {
 
   /* GstForceKeyUnit event */
   GstEvent       *force_key_unit_event;
+
+  /* Internal Toc (adjusted UIDs and title tags removed when processed) */
+  GstToc         *internal_toc;
 
   /* Flag to ease handling of WebM specifics */
   gboolean is_webm;

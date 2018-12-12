@@ -11,7 +11,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: gst-plugins-good 0.10.25.3\n"
 "Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2016-04-20 15:30+0300\n"
+"POT-Creation-Date: 2017-05-04 15:05+0300\n"
 "PO-Revision-Date: 2010-11-17 23:03+0200\n"
 "Last-Translator: Tommi Vainikainen <Tommi.Vainikainen@iki.fi>\n"
 "Language-Team: Finnish <translation-team-fi@lists.sourceforge.net>\n"
@@ -38,9 +38,6 @@ msgstr "Palvelimeen ei saatu yhteyttä"
 msgid "No URL set."
 msgstr "Ei URL:ää asetettuna."
 
-msgid "Server does not support seeking."
-msgstr "Pavelin ei tue kelausta."
-
 msgid "Could not resolve server name."
 msgstr "Palvelimen nimeä ei saatu selvitettyä."
 
@@ -58,8 +55,8 @@ msgstr "Tapahtui verkkovirhe tai palvelin sulki yhteyden yllättäen."
 msgid "Server sent bad data."
 msgstr "Palvelin lähetti virheellistä dataa."
 
-msgid "Internal data stream error."
-msgstr "Sisäisen tietovirran virhe."
+msgid "Server does not support seeking."
+msgstr "Pavelin ei tue kelausta."
 
 msgid "No or invalid input audio, AVI stream will be corrupt."
 msgstr ""
@@ -90,9 +87,6 @@ msgstr "Tiedostossa olevaa videota ei ehkä voida näyttää oikein."
 #, c-format
 msgid "This file contains too many streams. Only playing first %d"
 msgstr "Tiedosto sisältää useita virtoja. Soitetaan vain ensimmäiset %d"
-
-msgid "Internal data flow error."
-msgstr "Sisäisen tietovirran virhe."
 
 msgid ""
 "No supported stream was found. You might need to install a GStreamer RTSP "
@@ -270,11 +264,12 @@ msgid "Video device returned invalid dimensions."
 msgstr ""
 
 #, fuzzy
-msgid "Video devices uses an unsupported interlacing method."
+msgid "Video device uses an unsupported interlacing method."
 msgstr "Laitteen ”%s” ajuri ei tue mitään tunnettua kaappaustapaa."
 
-msgid "Video devices uses an unsupported pixel format."
-msgstr ""
+#, fuzzy
+msgid "Video device uses an unsupported pixel format."
+msgstr "Laitteen ”%s” ajuri ei tue mitään tunnettua kaappaustapaa."
 
 msgid "Failed to configure internal buffer pool."
 msgstr ""
@@ -437,6 +432,12 @@ msgstr "Resoluution vaihto käytön aikana ei ole vielä mahdollista."
 
 msgid "Cannot operate without a clock"
 msgstr "Ei voitu toimia ilman kelloa"
+
+#~ msgid "Internal data stream error."
+#~ msgstr "Sisäisen tietovirran virhe."
+
+#~ msgid "Internal data flow error."
+#~ msgstr "Sisäisen tietovirran virhe."
 
 #, fuzzy
 #~ msgid "Device '%s' does not support video capture"

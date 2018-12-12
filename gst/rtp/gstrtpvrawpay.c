@@ -110,10 +110,10 @@ G_DEFINE_TYPE (GstRtpVRawPay, gst_rtp_vraw_pay, GST_TYPE_RTP_BASE_PAYLOAD)
   gstrtpbasepayload_class->set_caps = gst_rtp_vraw_pay_setcaps;
   gstrtpbasepayload_class->handle_buffer = gst_rtp_vraw_pay_handle_buffer;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_vraw_pay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_vraw_pay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_vraw_pay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_vraw_pay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP Raw Video payloader", "Codec/Payloader/Network/RTP",
@@ -284,7 +284,10 @@ gst_rtp_vraw_pay_handle_buffer (GstRTPBasePayload * payload, GstBuffer * buffer)
 
   rtpvrawpay = GST_RTP_VRAW_PAY (payload);
 
-  gst_video_frame_map (&frame, &rtpvrawpay->vinfo, buffer, GST_MAP_READ);
+  if (!gst_video_frame_map (&frame, &rtpvrawpay->vinfo, buffer, GST_MAP_READ)) {
+    gst_buffer_unref (buffer);
+    return GST_FLOW_ERROR;
+  }
 
   GST_LOG_OBJECT (rtpvrawpay, "new frame of %" G_GSIZE_FORMAT " bytes",
       gst_buffer_get_size (buffer));
@@ -322,7 +325,8 @@ gst_rtp_vraw_pay_handle_buffer (GstRTPBasePayload * payload, GstBuffer * buffer)
   buffers_per_list = packlines_per_list * packets_per_packline;
   buffers_per_list = GST_ROUND_UP_8 (buffers_per_list);
 
-  use_buffer_lists = (rtpvrawpay->chunks_per_frame < (height / yinc));
+  use_buffer_lists = buffers_per_list > 1 &&
+      (rtpvrawpay->chunks_per_frame < (height / yinc));
 
   fields = 1 + interlaced;
 
@@ -557,9 +561,7 @@ gst_rtp_vraw_pay_handle_buffer (GstRTPBasePayload * payload, GstBuffer * buffer)
         gst_buffer_resize (out, 0, gst_buffer_get_size (out) - left);
       }
 
-      gst_rtp_copy_meta (GST_ELEMENT_CAST (rtpvrawpay), out, buffer,
-          g_quark_from_static_string (GST_META_TAG_VIDEO_STR));
-
+      gst_rtp_copy_video_meta (rtpvrawpay, out, buffer);
 
       /* Now either push out the buffer directly */
       if (!use_buffer_lists) {

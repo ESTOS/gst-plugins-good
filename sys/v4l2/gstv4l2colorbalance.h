@@ -1,7 +1,7 @@
 /* GStreamer
  *
  * Copyright (C) 2003 Ronald Bultje <rbultje@ronald.bitfreak.net>
- *               2006 Edgard Lima <edgard.lima@indt.org.br>
+ *               2006 Edgard Lima <edgard.lima@gmail.com>
  *
  * gstv4l2colorbalance.h: color balance interface implementation for V4L2
  *
@@ -26,7 +26,8 @@
 
 #include <gst/gst.h>
 #include <gst/video/colorbalance.h>
-#include "v4l2_calls.h"
+
+#include "gstv4l2object.h"
 
 G_BEGIN_DECLS
 

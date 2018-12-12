@@ -375,6 +375,47 @@ guint  arg1
 </SIGNAL>
 
 <SIGNAL>
+<NAME>GstRtpBin::on-bundled-ssrc</NAME>
+<RETURNS>guint</RETURNS>
+<FLAGS>l</FLAGS>
+GstRtpBin *gstrtpbin
+guint  arg1
+</SIGNAL>
+
+<SIGNAL>
+<NAME>GstRtpBin::get-internal-storage</NAME>
+<RETURNS>GObject*</RETURNS>
+<FLAGS>la</FLAGS>
+GstRtpBin *gstrtpbin
+guint  arg1
+</SIGNAL>
+
+<SIGNAL>
+<NAME>GstRtpBin::new-storage</NAME>
+<RETURNS>void</RETURNS>
+<FLAGS>l</FLAGS>
+GstRtpBin *gstrtpbin
+GstElement *arg1
+guint  arg2
+</SIGNAL>
+
+<SIGNAL>
+<NAME>GstRtpBin::request-fec-decoder</NAME>
+<RETURNS>GstElement*</RETURNS>
+<FLAGS>l</FLAGS>
+GstRtpBin *gstrtpbin
+guint  arg1
+</SIGNAL>
+
+<SIGNAL>
+<NAME>GstRtpBin::request-fec-encoder</NAME>
+<RETURNS>GstElement*</RETURNS>
+<FLAGS>l</FLAGS>
+GstRtpBin *gstrtpbin
+guint  arg1
+</SIGNAL>
+
+<SIGNAL>
 <NAME>GstRtpJitterBuffer::clear-pt-map</NAME>
 <RETURNS>void</RETURNS>
 <FLAGS>la</FLAGS>
@@ -644,10 +685,60 @@ guint  arg1
 </SIGNAL>
 
 <SIGNAL>
+<NAME>GstRTSPSrc::accept-certificate</NAME>
+<RETURNS>gboolean</RETURNS>
+<FLAGS>l</FLAGS>
+GstRTSPSrc *gstrtspsrc
+GTlsConnection *arg1
+GTlsCertificate *arg2
+GTlsCertificateFlags  arg3
+</SIGNAL>
+
+<SIGNAL>
+<NAME>GstRTSPSrc::before-send</NAME>
+<RETURNS>gboolean</RETURNS>
+<FLAGS>fc</FLAGS>
+GstRTSPSrc *gstrtspsrc
+GstRTSPMessage *arg1
+</SIGNAL>
+
+<SIGNAL>
+<NAME>GstRTSPSrc::push-backchannel-buffer</NAME>
+<RETURNS>GstFlowReturn</RETURNS>
+<FLAGS>la</FLAGS>
+GstRTSPSrc *gstrtspsrc
+guint  arg1
+GstBuffer *arg2
+</SIGNAL>
+
+<SIGNAL>
 <NAME>GstSplitMuxSink::format-location</NAME>
 <RETURNS>gchar*</RETURNS>
 <FLAGS>l</FLAGS>
 GstSplitMuxSink *gstsplitmuxsink
 guint  arg1
+</SIGNAL>
+
+<SIGNAL>
+<NAME>GstSplitMuxSink::format-location-full</NAME>
+<RETURNS>gchar*</RETURNS>
+<FLAGS>l</FLAGS>
+GstSplitMuxSink *gstsplitmuxsink
+guint  arg1
+GstSample *arg2
+</SIGNAL>
+
+<SIGNAL>
+<NAME>GstSplitMuxSink::split-now</NAME>
+<RETURNS>void</RETURNS>
+<FLAGS>l</FLAGS>
+GstSplitMuxSink *gstsplitmuxsink
+</SIGNAL>
+
+<SIGNAL>
+<NAME>GstSplitMuxSrc::format-location</NAME>
+<RETURNS>GStrv</RETURNS>
+<FLAGS>l</FLAGS>
+GstSplitMuxSrc *gstsplitmuxsrc
 </SIGNAL>
 

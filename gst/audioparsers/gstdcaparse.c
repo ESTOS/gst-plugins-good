@@ -106,10 +106,8 @@ gst_dca_parse_class_init (GstDcaParseClass * klass)
   parse_class->get_sink_caps = GST_DEBUG_FUNCPTR (gst_dca_parse_get_sink_caps);
   parse_class->set_sink_caps = GST_DEBUG_FUNCPTR (gst_dca_parse_set_sink_caps);
 
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&sink_template));
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&src_template));
+  gst_element_class_add_static_pad_template (element_class, &sink_template);
+  gst_element_class_add_static_pad_template (element_class, &src_template);
 
   gst_element_class_set_static_metadata (element_class,
       "DTS Coherent Acoustics audio stream parser", "Codec/Parser/Audio",
@@ -247,7 +245,7 @@ gst_dca_parse_parse_header (GstDcaParse * dcaparse,
   if (chans < G_N_ELEMENTS (channels_table))
     *channels = channels_table[chans] + ((lfe) ? 1 : 0);
   else
-    *channels = 0;
+    return FALSE;
 
   if (depth)
     *depth = (marker == 0x1FFFE800 || marker == 0xFF1F00E8) ? 14 : 16;
@@ -330,6 +328,7 @@ gst_dca_parse_handle_frame (GstBaseParse * parse,
   gint off = -1;
   GstMapInfo map;
   GstFlowReturn ret = GST_FLOW_EOS;
+  gsize extra_size = 0;
 
   gst_buffer_map (buf, &map, GST_MAP_READ);
 
@@ -448,12 +447,37 @@ gst_dca_parse_handle_frame (GstBaseParse * parse,
   }
 
 cleanup:
-  gst_buffer_unmap (buf, &map);
-
-  if (ret == GST_FLOW_OK && size <= map.size) {
-    ret = gst_base_parse_finish_frame (parse, frame, size);
+  /* it is possible that DTS HD substream after DTS core */
+  if (parse->flags & GST_BASE_PARSE_FLAG_DRAINING || map.size >= size + 9) {
+    extra_size = 0;
+    if (map.size >= size + 9) {
+      const guint8 *next = map.data + size;
+      /* Check for DTS_SYNCWORD_SUBSTREAM */
+      if (next[0] == 0x64 && next[1] == 0x58 && next[2] == 0x20
+          && next[3] == 0x25) {
+        /* 7.4.1 Extension Substream Header */
+        GstBitReader reader;
+        gst_bit_reader_init (&reader, next + 4, 5);
+        gst_bit_reader_skip (&reader, 8 + 2);   /* skip UserDefinedBits and nExtSSIndex) */
+        if (gst_bit_reader_get_bits_uint8_unchecked (&reader, 1) == 0) {
+          gst_bit_reader_skip (&reader, 8);
+          extra_size =
+              gst_bit_reader_get_bits_uint32_unchecked (&reader, 16) + 1;
+        } else {
+          gst_bit_reader_skip (&reader, 12);
+          extra_size =
+              gst_bit_reader_get_bits_uint32_unchecked (&reader, 20) + 1;
+        }
+      }
+    }
+    gst_buffer_unmap (buf, &map);
+    if (ret == GST_FLOW_OK && size + extra_size <= map.size) {
+      ret = gst_base_parse_finish_frame (parse, frame, size + extra_size);
+    } else {
+      ret = GST_FLOW_OK;
+    }
   } else {
-    ret = GST_FLOW_OK;
+    gst_buffer_unmap (buf, &map);
   }
 
   return ret;

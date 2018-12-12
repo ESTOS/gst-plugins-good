@@ -850,8 +850,7 @@ gst_rtp_h261_pay_fragment_push (GstRtpH261Pay * pay, GstBuffer * buffer,
 
   gst_rtp_buffer_unmap (&rtp);
 
-  gst_rtp_copy_meta (GST_ELEMENT_CAST (pay), outbuf, buffer,
-      g_quark_from_static_string (GST_META_TAG_VIDEO_STR));
+  gst_rtp_copy_video_meta (pay, outbuf, buffer);
 
   return gst_rtp_base_payload_push (GST_RTP_BASE_PAYLOAD_CAST (pay), outbuf);
 }
@@ -1047,10 +1046,10 @@ gst_rtp_h261_pay_class_init (GstRtpH261PayClass * klass)
   element_class = GST_ELEMENT_CLASS (klass);
   gstrtpbasepayload_class = GST_RTP_BASE_PAYLOAD_CLASS (klass);
 
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&gst_rtp_h261_pay_src_template));
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&gst_rtp_h261_pay_sink_template));
+  gst_element_class_add_static_pad_template (element_class,
+      &gst_rtp_h261_pay_src_template);
+  gst_element_class_add_static_pad_template (element_class,
+      &gst_rtp_h261_pay_sink_template);
 
   gst_element_class_set_static_metadata (element_class,
       "RTP H261 packet payloader", "Codec/Payloader/Network/RTP",

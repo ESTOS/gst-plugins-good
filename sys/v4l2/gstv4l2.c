@@ -1,7 +1,7 @@
 /* GStreamer
  *
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
- *               2006 Edgard Lima <edgard.lima@indt.org.br>
+ *               2006 Edgard Lima <edgard.lima@gmail.com>
  *
  * gstv4l2.c: plugin for v4l2 elements
  *
@@ -47,10 +47,15 @@
 #include "gstv4l2sink.h"
 #include "gstv4l2radio.h"
 #include "gstv4l2videodec.h"
+#include "gstv4l2h263enc.h"
+#include "gstv4l2h264enc.h"
+#include "gstv4l2mpeg4enc.h"
+#include "gstv4l2vp8enc.h"
+#include "gstv4l2vp9enc.h"
 #include "gstv4l2deviceprovider.h"
 #include "gstv4l2transform.h"
 
-/* used in v4l2_calls.c and v4l2src_calls.c */
+/* used in gstv4l2object.c and v4l2_calls.c */
 GST_DEBUG_CATEGORY (v4l2_debug);
 #define GST_CAT_DEFAULT v4l2_debug
 
@@ -118,7 +123,7 @@ gst_v4l2_probe_and_register (GstPlugin * plugin)
   GstV4l2Iterator *it;
   gint video_fd = -1;
   struct v4l2_capability vcap;
-  gboolean ret = TRUE;
+  guint32 device_caps;
 
   it = gst_v4l2_iterator_new ();
 
@@ -143,13 +148,12 @@ gst_v4l2_probe_and_register (GstPlugin * plugin)
       continue;
     }
 
-    if (!((vcap.capabilities & (V4L2_CAP_VIDEO_M2M |
-                    V4L2_CAP_VIDEO_M2M_MPLANE)) ||
-            /* But legacy driver may expose both CAPTURE and OUTPUT */
-            ((vcap.capabilities &
-                    (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE)) &&
-                (vcap.capabilities &
-                    (V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_VIDEO_OUTPUT_MPLANE)))))
+    if (vcap.capabilities & V4L2_CAP_DEVICE_CAPS)
+      device_caps = vcap.device_caps;
+    else
+      device_caps = vcap.capabilities;
+
+    if (!GST_V4L2_IS_M2M (device_caps))
       continue;
 
     GST_DEBUG ("Probing '%s' located at '%s'",
@@ -177,20 +181,38 @@ gst_v4l2_probe_and_register (GstPlugin * plugin)
 
     basename = g_path_get_basename (it->device_path);
 
-    if (gst_v4l2_is_video_dec (sink_caps, src_caps))
-      ret = gst_v4l2_video_dec_register (plugin, basename, it->device_path,
+    if (gst_v4l2_is_video_dec (sink_caps, src_caps)) {
+      gst_v4l2_video_dec_register (plugin, basename, it->device_path,
           sink_caps, src_caps);
-    else if (gst_v4l2_is_transform (sink_caps, src_caps))
-      ret = gst_v4l2_transform_register (plugin, basename, it->device_path,
+    } else if (gst_v4l2_is_video_enc (sink_caps, src_caps, NULL)) {
+      if (gst_v4l2_is_h264_enc (sink_caps, src_caps))
+        gst_v4l2_h264_enc_register (plugin, basename, it->device_path,
+            sink_caps, src_caps);
+
+      if (gst_v4l2_is_mpeg4_enc (sink_caps, src_caps))
+        gst_v4l2_mpeg4_enc_register (plugin, basename, it->device_path,
+            sink_caps, src_caps);
+
+      if (gst_v4l2_is_h263_enc (sink_caps, src_caps))
+        gst_v4l2_h263_enc_register (plugin, basename, it->device_path,
+            sink_caps, src_caps);
+
+      if (gst_v4l2_is_vp8_enc (sink_caps, src_caps))
+        gst_v4l2_vp8_enc_register (plugin, basename, it->device_path,
+            sink_caps, src_caps);
+
+      if (gst_v4l2_is_vp9_enc (sink_caps, src_caps))
+        gst_v4l2_vp9_enc_register (plugin, basename, it->device_path,
+            sink_caps, src_caps);
+    } else if (gst_v4l2_is_transform (sink_caps, src_caps)) {
+      gst_v4l2_transform_register (plugin, basename, it->device_path,
           sink_caps, src_caps);
+    }
     /* else if ( ... etc. */
 
     gst_caps_unref (sink_caps);
     gst_caps_unref (src_caps);
     g_free (basename);
-
-    if (!ret)
-      break;
   }
 
   if (video_fd >= 0)
@@ -198,7 +220,7 @@ gst_v4l2_probe_and_register (GstPlugin * plugin)
 
   gst_v4l2_iterator_free (it);
 
-  return ret;
+  return TRUE;
 }
 #endif
 

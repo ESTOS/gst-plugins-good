@@ -21,7 +21,6 @@
  */
 
 #include <unistd.h>
-#include <math.h>
 
 /* suppress warnings for deprecated API such as GValueArray
  * with newer GLib versions (>= 2.31.0) */
@@ -96,6 +95,7 @@ cleanup_level (GstElement * level)
 {
   GST_DEBUG ("cleanup_level");
 
+  gst_check_drop_buffers ();
   gst_pad_set_active (mysrcpad, FALSE);
   gst_pad_set_active (mysinkpad, FALSE);
   gst_check_teardown_src_pad (level);
@@ -194,7 +194,6 @@ GST_START_TEST (test_ref_counts)
   gst_element_set_bus (level, NULL);
   ASSERT_OBJECT_REFCOUNT (bus, "bus", 1);
   gst_object_unref (bus);
-  gst_buffer_unref (outbuffer);
   fail_unless (gst_element_set_state (level,
           GST_STATE_NULL) == GST_STATE_CHANGE_SUCCESS, "could not set to null");
   ASSERT_OBJECT_REFCOUNT (level, "level", 1);
@@ -297,7 +296,6 @@ GST_START_TEST (test_int16)
   gst_message_unref (message);
   gst_element_set_bus (level, NULL);
   gst_object_unref (bus);
-  gst_buffer_unref (outbuffer);
   gst_element_set_state (level, GST_STATE_NULL);
   cleanup_level (level);
 }
@@ -376,7 +374,6 @@ GST_START_TEST (test_int16_panned)
   gst_bus_set_flushing (bus, TRUE);
   gst_element_set_bus (level, NULL);
   gst_object_unref (bus);
-  gst_buffer_unref (outbuffer);
   gst_element_set_state (level, GST_STATE_NULL);
   cleanup_level (level);
 }
@@ -435,7 +432,6 @@ GST_START_TEST (test_float)
   gst_message_unref (message);
   gst_element_set_bus (level, NULL);
   gst_object_unref (bus);
-  gst_buffer_unref (outbuffer);
   gst_element_set_state (level, GST_STATE_NULL);
   cleanup_level (level);
 }
@@ -502,7 +498,6 @@ GST_START_TEST (test_message_on_eos)
   gst_message_unref (message);
   gst_element_set_bus (level, NULL);
   gst_object_unref (bus);
-  gst_buffer_unref (outbuffer);
   gst_element_set_state (level, GST_STATE_NULL);
   cleanup_level (level);
 }
@@ -542,7 +537,6 @@ GST_START_TEST (test_message_count)
 
   gst_element_set_bus (level, NULL);
   gst_object_unref (bus);
-  gst_buffer_unref (outbuffer);
   gst_element_set_state (level, GST_STATE_NULL);
   cleanup_level (level);
 }
@@ -590,7 +584,6 @@ GST_START_TEST (test_message_timestamps)
 
   gst_element_set_bus (level, NULL);
   gst_object_unref (bus);
-  gst_buffer_unref (outbuffer);
   gst_element_set_state (level, GST_STATE_NULL);
   cleanup_level (level);
 }

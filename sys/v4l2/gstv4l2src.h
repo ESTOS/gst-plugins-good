@@ -1,7 +1,7 @@
 /* GStreamer
  *
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
- *               2006 Edgard Lima <edgard.lima@indt.org.br>
+ *               2006 Edgard Lima <edgard.lima@gmail.com>
  *
  * gstv4l2src.h: BT8x8/V4L2 source element
  *
@@ -26,8 +26,6 @@
 
 #include <gstv4l2object.h>
 #include <gstv4l2bufferpool.h>
-
-GST_DEBUG_CATEGORY_EXTERN (v4l2src_debug);
 
 G_BEGIN_DECLS
 

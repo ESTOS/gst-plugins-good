@@ -212,6 +212,8 @@ static gboolean gst_flac_parse_src_event (GstBaseParse * parse,
     GstEvent * event);
 static GstCaps *gst_flac_parse_get_sink_caps (GstBaseParse * parse,
     GstCaps * filter);
+static gboolean gst_flac_parse_set_sink_caps (GstBaseParse * parse,
+    GstCaps * caps);
 
 #define gst_flac_parse_parent_class parent_class
 G_DEFINE_TYPE (GstFlacParse, gst_flac_parse, GST_TYPE_BASE_PARSE);
@@ -246,11 +248,11 @@ gst_flac_parse_class_init (GstFlacParseClass * klass)
   baseparse_class->src_event = GST_DEBUG_FUNCPTR (gst_flac_parse_src_event);
   baseparse_class->get_sink_caps =
       GST_DEBUG_FUNCPTR (gst_flac_parse_get_sink_caps);
+  baseparse_class->set_sink_caps =
+      GST_DEBUG_FUNCPTR (gst_flac_parse_set_sink_caps);
 
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&src_factory));
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&sink_factory));
+  gst_element_class_add_static_pad_template (element_class, &src_factory);
+  gst_element_class_add_static_pad_template (element_class, &sink_factory);
 
   gst_element_class_set_static_metadata (element_class, "FLAC audio parser",
       "Codec/Parser/Audio",
@@ -790,11 +792,12 @@ gst_flac_parse_handle_frame (GstBaseParse * parse,
 
     GST_DEBUG_OBJECT (flacparse, "Found metadata block of size %u", size);
     framesize = size;
+    gst_base_parse_set_min_frame_size (GST_BASE_PARSE (flacparse), framesize);
     goto cleanup;
   }
 
   if ((GST_READ_UINT16_BE (map.data) & 0xfffe) == 0xfff8) {
-    gboolean ret;
+    gboolean ret, is_first = !flacparse->strategy_checked;
     guint next;
 
     flacparse->offset = GST_BUFFER_OFFSET (buffer);
@@ -804,9 +807,15 @@ gst_flac_parse_handle_frame (GstBaseParse * parse,
     GST_DEBUG_OBJECT (flacparse, "Found sync code");
     ret = gst_flac_parse_frame_is_valid (flacparse, map.data, map.size, &next);
     if (ret) {
+      if (is_first) {
+        GST_INFO_OBJECT (flacparse, "First sample number is %" G_GUINT64_FORMAT,
+            flacparse->sample_number);
+        flacparse->first_sample_number = flacparse->sample_number;
+      }
       framesize = next;
       goto cleanup;
     }
+
     /* If we're at EOS and the frame was not valid, drop it! */
     if (G_UNLIKELY (GST_BASE_PARSE_DRAINING (flacparse))) {
       GST_WARNING_OBJECT (flacparse, "EOS");
@@ -1533,6 +1542,7 @@ gst_flac_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame,
   GstBuffer *buffer = frame->buffer, *sbuffer;
   GstMapInfo map;
   GstFlowReturn res = GST_FLOW_ERROR;
+  guint64 relative_sample_number;
 
   gst_buffer_map (buffer, &map, GST_MAP_READ);
 
@@ -1588,6 +1598,9 @@ gst_flac_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame,
 
       if (res != GST_FLOW_OK)
         goto cleanup;
+    } else {
+      /* Header length */
+      gst_base_parse_set_min_frame_size (GST_BASE_PARSE (flacparse), 4);
     }
 
     /* DROPPED because we pushed already or will push all headers manually */
@@ -1635,19 +1648,21 @@ gst_flac_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame,
     }
 
     /* also cater for oggmux metadata */
+    relative_sample_number =
+        flacparse->sample_number - flacparse->first_sample_number;
     if (flacparse->blocking_strategy == 0) {
       GST_BUFFER_PTS (buffer) =
-          gst_util_uint64_scale (flacparse->sample_number,
+          gst_util_uint64_scale (relative_sample_number,
           flacparse->block_size * GST_SECOND, flacparse->samplerate);
       GST_BUFFER_OFFSET_END (buffer) =
-          flacparse->sample_number * flacparse->block_size +
+          relative_sample_number * flacparse->block_size +
           flacparse->block_size;
     } else {
       GST_BUFFER_PTS (buffer) =
-          gst_util_uint64_scale (flacparse->sample_number, GST_SECOND,
+          gst_util_uint64_scale (relative_sample_number, GST_SECOND,
           flacparse->samplerate);
       GST_BUFFER_OFFSET_END (buffer) =
-          flacparse->sample_number + flacparse->block_size;
+          relative_sample_number + flacparse->block_size;
     }
 
     GST_BUFFER_DTS (buffer) = GST_BUFFER_PTS (buffer);
@@ -1863,4 +1878,16 @@ gst_flac_parse_get_sink_caps (GstBaseParse * parse, GstCaps * filter)
   }
 
   return res;
+}
+
+static gboolean
+gst_flac_parse_set_sink_caps (GstBaseParse * parse, GstCaps * caps)
+{
+  /* If caps are changing, drain any pending frames we have so that afterwards
+   * we can potentially accept a new stream that is starting with the FLAC
+   * headers again. If headers appear in the middle of the stream we can't
+   * detect them
+   */
+  gst_base_parse_drain (parse);
+  return TRUE;
 }

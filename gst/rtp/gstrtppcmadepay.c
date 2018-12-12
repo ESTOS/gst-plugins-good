@@ -1,6 +1,6 @@
 /* GStreamer
  * Copyright (C) <1999> Erik Walthinsen <omega@cse.ogi.edu>
- * Copyright (C) <2005> Edgard Lima <edgard.lima@indt.org.br>
+ * Copyright (C) <2005> Edgard Lima <edgard.lima@gmail.com>
  * Copyright (C) <2005> Zeeshan Ali <zeenix@gmail.com>
  *
  * This library is free software; you can redistribute it and/or
@@ -79,15 +79,15 @@ gst_rtp_pcma_depay_class_init (GstRtpPcmaDepayClass * klass)
   gstelement_class = (GstElementClass *) klass;
   gstrtpbasedepayload_class = (GstRTPBaseDepayloadClass *) klass;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_pcma_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_pcma_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_pcma_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_pcma_depay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP PCMA depayloader", "Codec/Depayloader/Network/RTP",
       "Extracts PCMA audio from RTP packets",
-      "Edgard Lima <edgard.lima@indt.org.br>, Zeeshan Ali <zeenix@gmail.com>");
+      "Edgard Lima <edgard.lima@gmail.com>, Zeeshan Ali <zeenix@gmail.com>");
 
   gstrtpbasedepayload_class->process_rtp_packet = gst_rtp_pcma_depay_process;
   gstrtpbasedepayload_class->set_caps = gst_rtp_pcma_depay_setcaps;
@@ -150,8 +150,7 @@ gst_rtp_pcma_depay_process (GstRTPBaseDepayload * depayload, GstRTPBuffer * rtp)
       GST_BUFFER_FLAG_SET (outbuf, GST_BUFFER_FLAG_RESYNC);
     }
 
-    gst_rtp_drop_meta (GST_ELEMENT_CAST (depayload), outbuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_drop_non_audio_meta (depayload, outbuf);
   }
 
   return outbuf;

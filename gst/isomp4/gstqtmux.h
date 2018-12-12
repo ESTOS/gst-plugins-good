@@ -100,6 +100,9 @@ struct _GstQTPad
   gboolean sparse;
   /* bitrates */
   guint32 avg_bitrate, max_bitrate;
+  /* expected sample duration */
+  guint expected_sample_duration_n;
+  guint expected_sample_duration_d;
 
   /* for avg bitrate calculation */
   guint64 total_bytes;
@@ -108,21 +111,21 @@ struct _GstQTPad
   GstBuffer *last_buf;
   /* dts of last_buf */
   GstClockTime last_dts;
+  guint64 sample_offset;
 
   /* This is compensate for CTTS */
   GstClockTime dts_adjustment;
 
   /* store the first timestamp for comparing with other streams and
    * know if there are late streams */
+  /* subjected to dts adjustment */
   GstClockTime first_ts;
   GstClockTime first_dts;
-
-  guint buf_head;
-  guint buf_tail;
 
   /* all the atom and chunk book-keeping is delegated here
    * unowned/uncounted reference, parent MOOV owns */
   AtomTRAK *trak;
+  AtomTRAK *tc_trak;
   SampleTableEntry *trak_ste;
   /* fragmented support */
   /* meta data book-keeping delegated here */
@@ -143,6 +146,18 @@ struct _GstQTPad
   GstQTPadPrepareBufferFunc prepare_buf_func;
   GstQTPadSetCapsFunc set_caps;
   GstQTPadCreateEmptyBufferFunc create_empty_buffer;
+
+  /* SMPTE timecode */
+  GstVideoTimeCode *first_tc;
+  GstClockTime first_pts;
+  guint64 tc_pos;
+
+  /* for keeping track in pre-fill mode */
+  GArray *samples;
+  /* current sample */
+  GstAdapter *raw_audio_adapter;
+  guint64 raw_audio_adapter_offset;
+  GstClockTime raw_audio_adapter_pts;
 };
 
 typedef enum _GstQTMuxState
@@ -158,7 +173,8 @@ typedef enum _GstQtMuxMode {
     GST_QT_MUX_MODE_FRAGMENTED,
     GST_QT_MUX_MODE_FRAGMENTED_STREAMABLE,
     GST_QT_MUX_MODE_FAST_START,
-    GST_QT_MUX_MODE_ROBUST_RECORDING
+    GST_QT_MUX_MODE_ROBUST_RECORDING,
+    GST_QT_MUX_MODE_ROBUST_RECORDING_PREFILL,
 } GstQtMuxMode;
 
 struct _GstQTMux
@@ -190,10 +206,17 @@ struct _GstQTMux
   /* keep track of the largest chunk to fine-tune brands */
   GstClockTime longest_chunk;
 
-  /* Earliest timestamp across all pads/traks */
+  /* Earliest timestamp across all pads/traks
+   * (unadjusted incoming PTS) */
   GstClockTime first_ts;
   /* Last DTS across all pads (= duration) */
   GstClockTime last_dts;
+
+  /* Last pad we used for writing the current chunk */
+  GstQTPad *current_pad;
+  guint64 current_chunk_size;
+  GstClockTime current_chunk_duration;
+  guint64 current_chunk_offset;
 
   /* atom helper objects */
   AtomsContext *context;
@@ -204,7 +227,6 @@ struct _GstQTMux
 
   /* Set when tags are received, cleared when written to moov */
   gboolean tags_changed;
-
 
   /* fragmented file index */
   AtomMFRA *mfra;
@@ -242,6 +264,12 @@ struct _GstQTMux
   /* Multiplier for conversion from reserved_max_duration to bytes */
   guint reserved_bytes_per_sec_per_trak;
 
+  guint64 interleave_bytes;
+  GstClockTime interleave_time;
+  gboolean interleave_bytes_set, interleave_time_set;
+
+  GstClockTime max_raw_audio_drift;
+
   /* Reserved minimum MOOV size in bytes
    * This is converted from reserved_max_duration
    * using the bytes/trak/sec estimate */
@@ -258,6 +286,8 @@ struct _GstQTMux
   GstClockTime last_moov_update;
   GstClockTime reserved_moov_update_period;
   GstClockTime muxed_since_last_update;
+
+  gboolean reserved_prefill;
 
   /* for request pad naming */
   guint video_pads, audio_pads, subtitle_pads;

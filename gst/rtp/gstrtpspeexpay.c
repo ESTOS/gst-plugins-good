@@ -1,5 +1,5 @@
 /* GStreamer
- * Copyright (C) <2005> Edgard Lima <edgard.lima@indt.org.br>
+ * Copyright (C) <2005> Edgard Lima <edgard.lima@gmail.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -80,14 +80,14 @@ gst_rtp_speex_pay_class_init (GstRtpSPEEXPayClass * klass)
   gstrtpbasepayload_class->get_caps = gst_rtp_speex_pay_getcaps;
   gstrtpbasepayload_class->handle_buffer = gst_rtp_speex_pay_handle_buffer;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_speex_pay_sink_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_speex_pay_src_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_speex_pay_sink_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_speex_pay_src_template);
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP Speex payloader", "Codec/Payloader/Network/RTP",
       "Payload-encodes Speex audio into a RTP packet",
-      "Edgard Lima <edgard.lima@indt.org.br>");
+      "Edgard Lima <edgard.lima@gmail.com>");
 
   GST_DEBUG_CATEGORY_INIT (rtpspeexpay_debug, "rtpspeexpay", 0,
       "Speex RTP Payloader");
@@ -289,8 +289,7 @@ gst_rtp_speex_pay_handle_buffer (GstRTPBasePayload * basepayload,
   GST_BUFFER_PTS (outbuf) = timestamp;
   GST_BUFFER_DURATION (outbuf) = duration;
 
-  gst_rtp_copy_meta (GST_ELEMENT_CAST (basepayload), outbuf, buffer,
-      g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+  gst_rtp_copy_audio_meta (basepayload, outbuf, buffer);
   outbuf = gst_buffer_append (outbuf, buffer);
   buffer = NULL;
 

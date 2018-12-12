@@ -80,10 +80,10 @@ gst_rtp_ac3_depay_class_init (GstRtpAC3DepayClass * klass)
   gstelement_class = (GstElementClass *) klass;
   gstrtpbasedepayload_class = (GstRTPBaseDepayloadClass *) klass;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_ac3_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_ac3_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_ac3_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_ac3_depay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP AC3 depayloader", "Codec/Depayloader/Network/RTP",
@@ -156,8 +156,7 @@ gst_rtp_ac3_depay_process (GstRTPBaseDepayload * depayload, GstRTPBuffer * rtp)
   outbuf = gst_rtp_buffer_get_payload_subbuffer (rtp, 2, -1);
 
   if (outbuf) {
-    gst_rtp_drop_meta (GST_ELEMENT_CAST (rtpac3depay), outbuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_drop_non_audio_meta (rtpac3depay, outbuf);
     GST_DEBUG_OBJECT (rtpac3depay, "pushing buffer of size %" G_GSIZE_FORMAT,
         gst_buffer_get_size (outbuf));
   }

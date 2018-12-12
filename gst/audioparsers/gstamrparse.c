@@ -1,5 +1,5 @@
 /* GStreamer Adaptive Multi-Rate parser plugin
- * Copyright (C) 2006 Edgard Lima <edgard.lima@indt.org.br>
+ * Copyright (C) 2006 Edgard Lima <edgard.lima@gmail.com>
  * Copyright (C) 2008 Nokia Corporation. All rights reserved.
  *
  * Contact: Stefan Kost <stefan.kost@nokia.com>
@@ -100,10 +100,8 @@ gst_amr_parse_class_init (GstAmrParseClass * klass)
   GST_DEBUG_CATEGORY_INIT (amrparse_debug, "amrparse", 0,
       "AMR-NB audio stream parser");
 
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&sink_template));
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&src_template));
+  gst_element_class_add_static_pad_template (element_class, &sink_template);
+  gst_element_class_add_static_pad_template (element_class, &src_template);
 
   gst_element_class_set_static_metadata (element_class,
       "AMR audio stream parser", "Codec/Parser/Audio",

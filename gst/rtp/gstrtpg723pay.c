@@ -84,10 +84,10 @@ gst_rtp_g723_pay_class_init (GstRTPG723PayClass * klass)
 
   gstelement_class->change_state = gst_rtp_g723_pay_change_state;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_g723_pay_sink_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_g723_pay_src_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_g723_pay_sink_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_g723_pay_src_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP G.723 payloader", "Codec/Payloader/Network/RTP",
@@ -164,8 +164,7 @@ gst_rtp_g723_pay_flush (GstRTPG723Pay * pay)
     pay->discont = FALSE;
   }
   gst_rtp_buffer_unmap (&rtp);
-  gst_rtp_copy_meta (GST_ELEMENT_CAST (pay), outbuf, payload_buf,
-      g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+  gst_rtp_copy_audio_meta (pay, outbuf, payload_buf);
 
   outbuf = gst_buffer_append (outbuf, payload_buf);
 

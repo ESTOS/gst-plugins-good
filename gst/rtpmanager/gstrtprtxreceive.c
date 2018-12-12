@@ -25,90 +25,113 @@
  * SECTION:element-rtprtxreceive
  * @see_also: rtprtxsend, rtpsession, rtpjitterbuffer
  *
- * The receiver will listen to the custom retransmission events from the
- * downstream jitterbuffer and will remember the SSRC1 of the stream and
- * seqnum that was requested. When it sees a packet with one of the stored
- * seqnum, it associates the SSRC2 of the stream with the SSRC1 of the
- * master stream. From then it knows that SSRC2 is the retransmission
- * stream of SSRC1. This algorithm is stated in RFC 4588. For this
- * algorithm to work, RFC4588 also states that no two pending retransmission
- * requests can exist for the same seqnum and different SSRCs or else it
- * would be impossible to associate the retransmission with the original
- * requester SSRC.
- * When the RTX receiver has associated the retransmission packets,
- * it can depayload and forward them to the source pad of the element.
- * RTX is SSRC-multiplexed. See #GstRtpRtxSend
+ * rtprtxreceive listens to the retransmission events from the
+ * downstream rtpjitterbuffer and remembers the SSRC (ssrc1) of the stream and
+ * the sequence number that was requested. When it receives a packet with
+ * a sequence number equal to one of the ones stored and with a different SSRC,
+ * it identifies the new SSRC (ssrc2) as the retransmission stream of ssrc1.
+ * From this point on, it replaces ssrc2 with ssrc1 in all packets of the
+ * ssrc2 stream and flags them as retransmissions, so that rtpjitterbuffer
+ * can reconstruct the original stream.
  *
- * <refsect2>
- * <title>Example pipelines</title>
+ * This algorithm is implemented as specified in RFC 4588.
+ *
+ * This element is meant to be used with rtprtxsend on the sender side.
+ * See #GstRtpRtxSend
+ *
+ * Below you can see some examples that illustrate how rtprtxreceive and
+ * rtprtxsend fit among the other rtp elements and how they work internally.
+ * Normally, hoewever, you should avoid using such pipelines and use
+ * rtpbin instead, with its #GstRtpBin::request-aux-sender and
+ * #GstRtpBin::request-aux-receiver signals. See #GstRtpBin.
+ *
+ * # Example pipelines
  * |[
- * gst-launch-1.0 rtpsession name=rtpsession \
- *         audiotestsrc ! speexenc ! rtpspeexpay pt=97 ! rtprtxsend rtx-payload-type=99 ! \
- *             identity drop-probability=0.1 ! rtpsession.send_rtp_sink \
- *             rtpsession.send_rtp_src ! udpsink host="127.0.0.1" port=5000 \
- *         udpsrc port=5001 ! rtpsession.recv_rtcp_sink \
- *         rtpsession.send_rtcp_src ! udpsink host="127.0.0.1" port=5002 sync=false async=false
- * ]| Send audio stream through port 5000. (5001 and 5002 are just the rtcp link with the receiver)
+ * gst-launch-1.0 rtpsession name=rtpsession rtp-profile=avpf \
+ *     audiotestsrc is-live=true ! opusenc ! rtpopuspay pt=96 ! \
+ *         rtprtxsend payload-type-map="application/x-rtp-pt-map,96=(uint)97" ! \
+ *         rtpsession.send_rtp_sink \
+ *     rtpsession.send_rtp_src ! identity drop-probability=0.01 ! \
+ *         udpsink host="127.0.0.1" port=5000 \
+ *     udpsrc port=5001 ! rtpsession.recv_rtcp_sink \
+ *     rtpsession.send_rtcp_src ! udpsink host="127.0.0.1" port=5002 \
+ *         sync=false async=false
+ * ]| Send audio stream through port 5000 (5001 and 5002 are just the rtcp
+ * link with the receiver)
  * |[
- * gst-launch-1.0 rtpsession name=rtpsession \
- *         udpsrc port=5000 caps="application/x-rtp,media=(string)audio,clock-rate=(int)44100,encoding-name=(string)SPEEX,encoding-params=(string)1,octet-align=(string)1" ! \
- *             rtpsession.recv_rtp_sink \
- *             rtpsession.recv_rtp_src ! rtprtxreceive rtx-payload-types="99" ! rtpjitterbuffer do-retransmission=true ! rtpspeexdepay ! \
- *             speexdec ! audioconvert ! autoaudiosink \
- *         rtpsession.send_rtcp_src ! udpsink host="127.0.0.1" port=5001 \
- *         udpsrc port=5002 ! rtpsession.recv_rtcp_sink sync=fakse async=false
- * ]| Receive audio stream from port 5000. (5001 and 5002 are just the rtcp link with the sender)
- * On sender side make sure to use a different payload type for the stream and
- * its associated retransmission stream (see #GstRtpRtxSend). Note that several retransmission streams can
- * have the same payload type so this is not deterministic. Actually the
- * rtprtxreceiver element does the association using seqnum values.
- * On receiver side set all the retransmission payload types (Those informations are retrieve
- * through SDP).
- * You should still hear a clear sound when setting drop-probability to something greater than 0.
- * The rtpjitterbuffer will generate a custom upstream event GstRTPRetransmissionRequest when
- * it assumes that one packet is missing. Then this request is translated to a FB NACK in the rtcp link
- * Finally the rtpsession of the sender side re-convert it in a GstRTPRetransmissionRequest that will
- * be handle by rtprtxsend.
- * When increasing this value it may be possible that even the retransmission stream would be dropped
- * so the receiver will ask to resend the packets again and again until it actually receive them.
- * If the value is too high the rtprtxsend will not be able to retrieve the packet in its list of
- * stored packets. For learning purpose you could try to increase the max-size-packets or max-size-time
- * rtprtxsender's properties.
- * Also note that you should use rtprtxsend through rtpbin and its set-aux-send property. See #GstRtpBin.
+ * gst-launch-1.0 rtpsession name=rtpsession rtp-profile=avpf \
+ *     udpsrc port=5000 caps="application/x-rtp,media=(string)audio,clock-rate=(int)48000,encoding-name=(string)OPUS,payload=(int)96" ! \
+ *         rtpsession.recv_rtp_sink \
+ *     rtpsession.recv_rtp_src ! \
+ *         rtprtxreceive payload-type-map="application/x-rtp-pt-map,96=(uint)97" ! \
+ *         rtpssrcdemux ! rtpjitterbuffer do-retransmission=true ! \
+ *         rtpopusdepay ! opusdec ! audioconvert ! audioresample ! autoaudiosink \
+ *     rtpsession.send_rtcp_src ! \
+ *         udpsink host="127.0.0.1" port=5001 sync=false async=false \
+ *     udpsrc port=5002 ! rtpsession.recv_rtcp_sink
+ * ]| Receive audio stream from port 5000 (5001 and 5002 are just the rtcp
+ * link with the sender)
+ *
+ * In this example we can see a simple streaming of an OPUS stream with some
+ * of the packets being artificially dropped by the identity element.
+ * Thanks to retransmission, you should still hear a clear sound when setting
+ * drop-probability to something greater than 0.
+ *
+ * Internally, the rtpjitterbuffer will generate a custom upstream event,
+ * GstRTPRetransmissionRequest, when it detects that one packet is missing.
+ * Then this request is translated to a FB NACK in the rtcp link by rtpsession.
+ * Finally the rtpsession of the sender side will re-convert it in a
+ * GstRTPRetransmissionRequest that will be handled by rtprtxsend. rtprtxsend
+ * will then re-send the missing packet with a new srrc and a different payload
+ * type (here, 97), but with the same original sequence number. On the receiver
+ * side, rtprtxreceive will associate this new stream with the original and
+ * forward the retransmission packets to rtpjitterbuffer with the original
+ * ssrc and payload type.
+ *
  * |[
- * gst-launch-1.0 rtpsession name=rtpsession0 \
- *         audiotestsrc wave=0 ! speexenc ! rtpspeexpay pt=97 ! rtprtxsend rtx-payload-type=99 seqnum-offset=1 ! \
- *             identity drop-probability=0.1 ! rtpsession0.send_rtp_sink \
- *             rtpsession0.send_rtp_src ! udpsink host="127.0.0.1" port=5000 \
- *         udpsrc port=5001 ! rtpsession0.recv_rtcp_sink \
- *         rtpsession0.send_rtcp_src ! udpsink host="127.0.0.1" port=5002 sync=false async=false \
- *                rtpsession name=rtpsession1 \
- *         audiotestsrc wave=0 ! speexenc ! rtpspeexpay pt=97 ! rtprtxsend rtx-payload-type=99 seqnum-offset=10 ! \
- *             identity drop-probability=0.1 ! rtpsession1.send_rtp_sink \
- *             rtpsession1.send_rtp_src ! udpsink host="127.0.0.1" port=5000 \
- *         udpsrc port=5004 ! rtpsession1.recv_rtcp_sink \
- *         rtpsession1.send_rtcp_src ! udpsink host="127.0.0.1" port=5002 sync=false async=false
+ * gst-launch-1.0 rtpsession name=rtpsession rtp-profile=avpf \
+ *     audiotestsrc is-live=true ! opusenc ! rtpopuspay pt=97 seqnum-offset=1 ! \
+ *         rtprtxsend payload-type-map="application/x-rtp-pt-map,97=(uint)99" ! \
+ *         funnel name=f ! rtpsession.send_rtp_sink \
+ *     audiotestsrc freq=660.0 is-live=true ! opusenc ! \
+ *         rtpopuspay pt=97 seqnum-offset=100 ! \
+ *         rtprtxsend payload-type-map="application/x-rtp-pt-map,97=(uint)99" ! \
+ *         f. \
+ *     rtpsession.send_rtp_src ! identity drop-probability=0.01 ! \
+ *         udpsink host="127.0.0.1" port=5000 \
+ *     udpsrc port=5001 ! rtpsession.recv_rtcp_sink \
+ *     rtpsession.send_rtcp_src ! udpsink host="127.0.0.1" port=5002 \
+ *         sync=false async=false
  * ]| Send two audio streams to port 5000.
  * |[
- * gst-launch-1.0 rtpsession name=rtpsession
- *         udpsrc port=5000 caps="application/x-rtp,media=(string)audio,clock-rate=(int)44100,encoding-name=(string)SPEEX,encoding-params=(string)1,octet-align=(string)1" ! \
- *             rtpsession.recv_rtp_sink \
- *             rtpsession.recv_rtp_src ! rtprtxreceive rtx-payload-types="99" ! rtpssrcdemux name=demux \
- *             demux. ! queue ! rtpjitterbuffer do-retransmission=true ! rtpspeexdepay ! speexdec ! audioconvert ! autoaudiosink \
- *             demux. ! queue ! rtpjitterbuffer do-retransmission=true ! rtpspeexdepay ! speexdec ! audioconvert ! autoaudiosink \
- *         rtpsession.send_rtcp_src ! ! tee name=t ! queue ! udpsink host="127.0.0.1" port=5001 t. ! queue ! udpsink host="127.0.0.1" port=5004 \
- *         udpsrc port=5002 ! rtpsession.recv_rtcp_sink sync=fakse async=false
- * ]| Receive audio stream from port 5000.
- * On sender side the two streams have the same payload type for master streams, Same about retransmission streams.
- * The streams are sent to the network through two distincts sessions.
- * But we need to set a different seqnum-offset to make sure their seqnum navigate at a different rate like in concrete cases.
- * We could also choose the same seqnum offset but we would require to set a different initial seqnum value.
- * This is also why the rtprtxreceive can succeed to do the association between master and retransmission stream.
- * On receiver side the same session is used to receive the two streams. So the rtpssrcdemux is here to demultiplex
- * those two streams. The rtprtxreceive is responsible for reconstructing the original packets from the two retransmission streams.
- * You can play with the drop-probability value for one or both streams.
- * You should hear a clear sound. (after a few seconds the two streams wave feel synchronized)
- * </refsect2>
+ * gst-launch-1.0 rtpsession name=rtpsession rtp-profile=avpf \
+ *     udpsrc port=5000 caps="application/x-rtp,media=(string)audio,clock-rate=(int)48000,encoding-name=(string)OPUS,payload=(int)97" ! \
+ *         rtpsession.recv_rtp_sink \
+ *     rtpsession.recv_rtp_src ! \
+ *         rtprtxreceive payload-type-map="application/x-rtp-pt-map,97=(uint)99" ! \
+ *         rtpssrcdemux name=demux \
+ *     demux. ! queue ! rtpjitterbuffer do-retransmission=true ! rtpopusdepay ! \
+ *         opusdec ! audioconvert ! autoaudiosink \
+ *     demux. ! queue ! rtpjitterbuffer do-retransmission=true ! rtpopusdepay ! \
+ *         opusdec ! audioconvert ! autoaudiosink \
+ *     udpsrc port=5002 ! rtpsession.recv_rtcp_sink \
+ *     rtpsession.send_rtcp_src ! udpsink host="127.0.0.1" port=5001 \
+ *         sync=false async=false
+ * ]| Receive two audio streams from port 5000.
+ *
+ * In this example we are streaming two streams of the same type through the
+ * same port. They, however, are using a different SSRC (ssrc is randomly
+ * generated on each payloader - rtpopuspay in this example), so they can be
+ * identified and demultiplexed by rtpssrcdemux on the receiver side. This is
+ * an example of SSRC-multiplexing.
+ *
+ * It is important here to use a different starting sequence number
+ * (seqnum-offset), since this is the only means of identification that
+ * rtprtxreceive uses the very first time to identify retransmission streams.
+ * It is an error, according to RFC4588 to have two retransmission requests for
+ * packets belonging to two different streams but with the same sequence number.
+ * Note that the default seqnum-offset value (-1, which means random) would
+ * work just fine, but it is overriden here for illustration purposes.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -198,10 +221,8 @@ gst_rtp_rtx_receive_class_init (GstRtpRtxReceiveClass * klass)
           "correctly associated with retransmission requests", 0, G_MAXUINT,
           0, G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&src_factory));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&sink_factory));
+  gst_element_class_add_static_pad_template (gstelement_class, &src_factory);
+  gst_element_class_add_static_pad_template (gstelement_class, &sink_factory);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP Retransmission receiver", "Codec",
@@ -318,8 +339,7 @@ gst_rtp_rtx_receive_src_event (GstPad * pad, GstObject * parent,
         if (!gst_structure_get_uint (s, "ssrc", &ssrc))
           ssrc = -1;
 
-        GST_DEBUG_OBJECT (rtx,
-            "request seqnum: %" G_GUINT32_FORMAT ", ssrc: %" G_GUINT32_FORMAT,
+        GST_DEBUG_OBJECT (rtx, "got rtx request for seqnum: %u, ssrc: %X",
             seqnum, ssrc);
 
         GST_OBJECT_LOCK (rtx);
@@ -335,8 +355,8 @@ gst_rtp_rtx_receive_src_event (GstPad * pad, GstObject * parent,
         if (g_hash_table_lookup_extended (rtx->ssrc2_ssrc1_map,
                 GUINT_TO_POINTER (ssrc), NULL, &ssrc2)
             && GPOINTER_TO_UINT (ssrc2) != GPOINTER_TO_UINT (ssrc)) {
-          GST_DEBUG_OBJECT (rtx, "Retransmited stream %" G_GUINT32_FORMAT
-              " already associated to its master", GPOINTER_TO_UINT (ssrc2));
+          GST_TRACE_OBJECT (rtx, "Retransmited stream %X already associated "
+              "to its master, %X", GPOINTER_TO_UINT (ssrc2), ssrc);
         } else {
           SsrcAssoc *assoc;
 
@@ -346,15 +366,18 @@ gst_rtp_rtx_receive_src_event (GstPad * pad, GstObject * parent,
           if (g_hash_table_lookup_extended (rtx->seqnum_ssrc1_map,
                   GUINT_TO_POINTER (seqnum), NULL, (gpointer *) & assoc)) {
             if (assoc->ssrc == ssrc) {
+              /* same seqnum, same ssrc */
+
               /* do nothing because we have already considered this request
                * The jitter may be too impatient of the rtx packet has been
                * lost too.
                * It does not mean we reject the event, we still want to forward
                * the request to the gstrtpsession to be translater into a FB NACK
                */
-              GST_DEBUG_OBJECT (rtx, "Duplicated request seqnum: %"
-                  G_GUINT32_FORMAT ", ssrc1: %" G_GUINT32_FORMAT, seqnum, ssrc);
+              GST_LOG_OBJECT (rtx, "Duplicate request: seqnum: %u, ssrc: %X",
+                  seqnum, ssrc);
             } else {
+              /* same seqnum, different ssrc */
 
               /* If the association attempt is larger than ASSOC_TIMEOUT,
                * then we give up on it, and try this one.
@@ -374,9 +397,10 @@ gst_rtp_rtx_receive_src_event (GstPad * pad, GstObject * parent,
                     GUINT_TO_POINTER (seqnum));
                 goto retransmit;
               } else {
-                GST_DEBUG_OBJECT (rtx,
-                    "reject request for seqnum %" G_GUINT32_FORMAT
-                    " of master stream %" G_GUINT32_FORMAT, seqnum, ssrc);
+                GST_INFO_OBJECT (rtx, "rejecting request for seqnum %u"
+                    " of master stream %X; there is already a pending request "
+                    "for the same seqnum on ssrc %X that has not expired",
+                    seqnum, ssrc, assoc->ssrc);
 
                 /* do not forward the event as we are rejecting this request */
                 GST_OBJECT_UNLOCK (rtx);
@@ -394,9 +418,8 @@ gst_rtp_rtx_receive_src_event (GstPad * pad, GstObject * parent,
           }
         }
 
-        GST_DEBUG_OBJECT (rtx,
-            "packet number %" G_GUINT32_FORMAT " of master stream %"
-            G_GUINT32_FORMAT " needs to be retransmitted", seqnum, ssrc);
+        GST_DEBUG_OBJECT (rtx, "packet number %u of master stream %X"
+            " needs to be retransmitted", seqnum, ssrc);
 
         GST_OBJECT_UNLOCK (rtx);
       }
@@ -474,6 +497,7 @@ _gst_rtp_buffer_new_from_rtx (GstRTPBuffer * rtp, guint32 ssrc1,
 
   gst_buffer_copy_into (new_buffer, rtp->buffer,
       GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+  GST_BUFFER_FLAG_SET (new_buffer, GST_RTP_BUFFER_FLAG_RETRANSMISSION);
 
   return new_buffer;
 }
@@ -491,12 +515,15 @@ gst_rtp_rtx_receive_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
   guint16 seqnum = 0;
   guint16 orign_seqnum = 0;
   guint8 payload_type = 0;
+  gpointer payload = NULL;
   guint8 origin_payload_type = 0;
   gboolean is_rtx;
   gboolean drop = FALSE;
 
   /* map current rtp packet to parse its header */
-  gst_rtp_buffer_map (buffer, GST_MAP_READ, &rtp);
+  if (!gst_rtp_buffer_map (buffer, GST_MAP_READ, &rtp))
+    goto invalid_buffer;
+
   ssrc = gst_rtp_buffer_get_ssrc (&rtp);
   seqnum = gst_rtp_buffer_get_seq (&rtp);
   payload_type = gst_rtp_buffer_get_payload_type (&rtp);
@@ -504,11 +531,38 @@ gst_rtp_rtx_receive_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
   /* check if we have a retransmission packet (this information comes from SDP) */
   GST_OBJECT_LOCK (rtx);
 
-  rtx->last_time = GST_BUFFER_PTS (buffer);
-
   is_rtx =
       g_hash_table_lookup_extended (rtx->rtx_pt_map,
       GUINT_TO_POINTER (payload_type), NULL, NULL);
+
+  if (is_rtx) {
+    payload = gst_rtp_buffer_get_payload (&rtp);
+
+    if (!payload || gst_rtp_buffer_get_payload_len (&rtp) < 2) {
+      GST_OBJECT_UNLOCK (rtx);
+      gst_rtp_buffer_unmap (&rtp);
+      goto invalid_buffer;
+    }
+  }
+
+  rtx->last_time = GST_BUFFER_PTS (buffer);
+
+  if (g_hash_table_size (rtx->seqnum_ssrc1_map) > 0) {
+    GHashTableIter iter;
+    gpointer key, value;
+
+    g_hash_table_iter_init (&iter, rtx->seqnum_ssrc1_map);
+    while (g_hash_table_iter_next (&iter, &key, &value)) {
+      SsrcAssoc *assoc = value;
+
+      /* remove association request if it is too old */
+      if (GST_CLOCK_TIME_IS_VALID (rtx->last_time) &&
+          GST_CLOCK_TIME_IS_VALID (assoc->time) &&
+          assoc->time + ASSOC_TIMEOUT < rtx->last_time) {
+        g_hash_table_iter_remove (&iter);
+      }
+    }
+  }
 
   /* if the current packet is from a retransmission stream */
   if (is_rtx) {
@@ -521,14 +575,17 @@ gst_rtp_rtx_receive_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
         GPOINTER_TO_UINT (g_hash_table_lookup (rtx->rtx_pt_map,
             GUINT_TO_POINTER (payload_type)));
 
+    GST_DEBUG_OBJECT (rtx, "Got rtx packet: rtx seqnum %u, rtx ssrc %X, "
+        "rtx pt %u, orig seqnum %u, orig pt %u", seqnum, ssrc, payload_type,
+        orign_seqnum, origin_payload_type);
+
     /* first we check if we already have associated this retransmission stream
      * to a master stream */
     if (g_hash_table_lookup_extended (rtx->ssrc2_ssrc1_map,
             GUINT_TO_POINTER (ssrc), NULL, &ssrc1)) {
-      GST_DEBUG_OBJECT (rtx,
-          "packet is from retransmission stream %" G_GUINT32_FORMAT
-          " already associated to master stream %" G_GUINT32_FORMAT, ssrc,
-          GPOINTER_TO_UINT (ssrc1));
+      GST_TRACE_OBJECT (rtx,
+          "packet is from retransmission stream %X already associated to "
+          "master stream %X", ssrc, GPOINTER_TO_UINT (ssrc1));
       ssrc2 = ssrc;
     } else {
       SsrcAssoc *assoc;
@@ -538,17 +595,17 @@ gst_rtp_rtx_receive_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
        * history */
       if (g_hash_table_lookup_extended (rtx->seqnum_ssrc1_map,
               GUINT_TO_POINTER (orign_seqnum), NULL, (gpointer *) & assoc)) {
-        GST_DEBUG_OBJECT (rtx,
-            "associate retransmitted stream %" G_GUINT32_FORMAT
-            " to master stream %" G_GUINT32_FORMAT " thanks to packet %"
-            G_GUINT16_FORMAT "", ssrc, assoc->ssrc, orign_seqnum);
+        GST_LOG_OBJECT (rtx,
+            "associating retransmitted stream %X to master stream %X thanks "
+            "to rtx packet %u (orig seqnum %u)", ssrc, assoc->ssrc, seqnum,
+            orign_seqnum);
         ssrc1 = GUINT_TO_POINTER (assoc->ssrc);
         ssrc2 = ssrc;
 
         /* just put a guard */
         if (GPOINTER_TO_UINT (ssrc1) == ssrc2)
           GST_WARNING_OBJECT (rtx, "RTX receiver ssrc2_ssrc1_map bad state, "
-              "ssrc %" G_GUINT32_FORMAT " are the same\n", ssrc);
+              "master and rtx SSRCs are the same (%X)\n", ssrc);
 
         /* free the spot so that this seqnum can be used to do another
          * association */
@@ -568,9 +625,9 @@ gst_rtp_rtx_receive_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
 
       } else {
         /* we are not able to associate this rtx packet with a master stream */
-        GST_DEBUG_OBJECT (rtx,
-            "drop rtx packet because its orign_seqnum %" G_GUINT16_FORMAT
-            " is not in pending retransmission requests", orign_seqnum);
+        GST_INFO_OBJECT (rtx,
+            "dropping rtx packet %u because its orig seqnum (%u) is not in our"
+            " pending retransmission requests", seqnum, orign_seqnum);
         drop = TRUE;
       }
     }
@@ -600,17 +657,25 @@ gst_rtp_rtx_receive_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
   /* push the packet */
   if (is_rtx) {
     gst_buffer_unref (buffer);
-    GST_LOG_OBJECT (rtx, "push packet seqnum:%" G_GUINT16_FORMAT
-        " from a restransmission stream ssrc2:%" G_GUINT32_FORMAT " (src %"
-        G_GUINT32_FORMAT ")", orign_seqnum, ssrc2, GPOINTER_TO_UINT (ssrc1));
+    GST_LOG_OBJECT (rtx, "pushing packet seqnum:%u from restransmission "
+        "stream ssrc: %X (master ssrc %X)", orign_seqnum, ssrc2,
+        GPOINTER_TO_UINT (ssrc1));
     ret = gst_pad_push (rtx->srcpad, new_buffer);
   } else {
-    GST_LOG_OBJECT (rtx, "push packet seqnum:%" G_GUINT16_FORMAT
-        " from a master stream ssrc: %" G_GUINT32_FORMAT, seqnum, ssrc);
+    GST_TRACE_OBJECT (rtx, "pushing packet seqnum:%u from master stream "
+        "ssrc: %X", seqnum, ssrc);
     ret = gst_pad_push (rtx->srcpad, buffer);
   }
 
   return ret;
+
+invalid_buffer:
+  {
+    GST_ELEMENT_WARNING (rtx, STREAM, DECODE, (NULL),
+        ("Received invalid RTP payload, dropping"));
+    gst_buffer_unref (buffer);
+    return GST_FLOW_OK;
+  }
 }
 
 static void

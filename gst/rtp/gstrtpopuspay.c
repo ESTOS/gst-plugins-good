@@ -29,6 +29,7 @@
 #include <gst/audio/audio.h>
 
 #include "gstrtpopuspay.h"
+#include "gstrtputils.h"
 
 GST_DEBUG_CATEGORY_STATIC (rtpopuspay_debug);
 #define GST_CAT_DEFAULT (rtpopuspay_debug)
@@ -76,10 +77,10 @@ gst_rtp_opus_pay_class_init (GstRtpOPUSPayClass * klass)
   gstbasertppayload_class->get_caps = gst_rtp_opus_pay_getcaps;
   gstbasertppayload_class->handle_buffer = gst_rtp_opus_pay_handle_buffer;
 
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&gst_rtp_opus_pay_src_template));
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&gst_rtp_opus_pay_sink_template));
+  gst_element_class_add_static_pad_template (element_class,
+      &gst_rtp_opus_pay_src_template);
+  gst_element_class_add_static_pad_template (element_class,
+      &gst_rtp_opus_pay_sink_template);
 
   gst_element_class_set_static_metadata (element_class,
       "RTP Opus payloader",
@@ -102,21 +103,28 @@ gst_rtp_opus_pay_setcaps (GstRTPBasePayload * payload, GstCaps * caps)
   gboolean res;
   GstCaps *src_caps;
   GstStructure *s;
-  char *encoding_name;
+  const char *encoding_name = "OPUS";
   gint channels, rate;
   const char *sprop_stereo = NULL;
   char *sprop_maxcapturerate = NULL;
 
   src_caps = gst_pad_get_allowed_caps (GST_RTP_BASE_PAYLOAD_SRCPAD (payload));
   if (src_caps) {
-    src_caps = gst_caps_make_writable (src_caps);
-    src_caps = gst_caps_truncate (src_caps);
+    GstStructure *s;
+    const GValue *value;
+
     s = gst_caps_get_structure (src_caps, 0);
-    gst_structure_fixate_field_string (s, "encoding-name", "OPUS");
-    encoding_name = g_strdup (gst_structure_get_string (s, "encoding-name"));
-    gst_caps_unref (src_caps);
-  } else {
-    encoding_name = g_strdup ("X-GST-OPUS-DRAFT-SPITTKA-00");
+
+    if (gst_structure_has_field (s, "encoding-name")) {
+      GValue default_value = G_VALUE_INIT;
+
+      g_value_init (&default_value, G_TYPE_STRING);
+      g_value_set_static_string (&default_value, encoding_name);
+
+      value = gst_structure_get_value (s, "encoding-name");
+      if (!gst_value_can_intersect (&default_value, value))
+        encoding_name = "X-GST-OPUS-DRAFT-SPITTKA-00";
+    }
   }
 
   s = gst_caps_get_structure (caps, 0);
@@ -138,7 +146,6 @@ gst_rtp_opus_pay_setcaps (GstRTPBasePayload * payload, GstCaps * caps)
 
   gst_rtp_base_payload_set_options (payload, "audio", FALSE,
       encoding_name, 48000);
-  g_free (encoding_name);
 
   if (sprop_maxcapturerate && sprop_stereo) {
     res =
@@ -162,52 +169,21 @@ gst_rtp_opus_pay_setcaps (GstRTPBasePayload * payload, GstCaps * caps)
   return res;
 }
 
-typedef struct
-{
-  GstRtpOPUSPay *pay;
-  GstBuffer *outbuf;
-} CopyMetaData;
-
-static gboolean
-foreach_metadata (GstBuffer * inbuf, GstMeta ** meta, gpointer user_data)
-{
-  CopyMetaData *data = user_data;
-  GstRtpOPUSPay *pay = data->pay;
-  GstBuffer *outbuf = data->outbuf;
-  const GstMetaInfo *info = (*meta)->info;
-  const gchar *const *tags = gst_meta_api_type_get_tags (info->api);
-
-  if (!tags || (g_strv_length ((gchar **) tags) == 1
-          && gst_meta_api_type_has_tag (info->api,
-              g_quark_from_string (GST_META_TAG_AUDIO_STR)))) {
-    GstMetaTransformCopy copy_data = { FALSE, 0, -1 };
-    GST_DEBUG_OBJECT (pay, "copy metadata %s", g_type_name (info->api));
-    /* simply copy then */
-    info->transform_func (outbuf, *meta, inbuf,
-        _gst_meta_transform_copy, &copy_data);
-  } else {
-    GST_DEBUG_OBJECT (pay, "not copying metadata %s", g_type_name (info->api));
-  }
-
-  return TRUE;
-}
-
 static GstFlowReturn
 gst_rtp_opus_pay_handle_buffer (GstRTPBasePayload * basepayload,
     GstBuffer * buffer)
 {
   GstBuffer *outbuf;
   GstClockTime pts, dts, duration;
-  CopyMetaData data;
 
   pts = GST_BUFFER_PTS (buffer);
   dts = GST_BUFFER_DTS (buffer);
   duration = GST_BUFFER_DURATION (buffer);
 
   outbuf = gst_rtp_buffer_new_allocate (0, 0, 0);
-  data.pay = GST_RTP_OPUS_PAY (basepayload);
-  data.outbuf = outbuf;
-  gst_buffer_foreach_meta (buffer, foreach_metadata, &data);
+
+  gst_rtp_copy_audio_meta (basepayload, outbuf, buffer);
+
   outbuf = gst_buffer_append (outbuf, buffer);
 
   GST_BUFFER_PTS (outbuf) = pts;

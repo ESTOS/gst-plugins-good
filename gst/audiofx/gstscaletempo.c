@@ -651,6 +651,22 @@ gst_scaletempo_sink_event (GstBaseTransform * trans, GstEvent * event)
   } else if (GST_EVENT_TYPE (event) == GST_EVENT_FLUSH_STOP) {
     gst_segment_init (&scaletempo->in_segment, GST_FORMAT_UNDEFINED);
     gst_segment_init (&scaletempo->out_segment, GST_FORMAT_UNDEFINED);
+  } else if (GST_EVENT_TYPE (event) == GST_EVENT_GAP) {
+    if (scaletempo->scale != 1.0) {
+      GstClockTime gap_ts, gap_duration;
+      gst_event_parse_gap (event, &gap_ts, &gap_duration);
+      if (scaletempo->reverse) {
+        gap_ts = scaletempo->in_segment.stop - gap_ts;
+      } else {
+        gap_ts = gap_ts - scaletempo->in_segment.start;
+      }
+      gap_ts = gap_ts / scaletempo->scale + scaletempo->in_segment.start;
+      if (GST_CLOCK_TIME_IS_VALID (gap_duration)) {
+        gap_duration = gap_duration / ABS (scaletempo->scale);
+      }
+      gst_event_unref (event);
+      event = gst_event_new_gap (gap_ts, gap_duration);
+    }
   }
 
   return GST_BASE_TRANSFORM_CLASS (parent_class)->sink_event (trans, event);
@@ -699,6 +715,7 @@ gst_scaletempo_start (GstBaseTransform * trans)
 
   gst_segment_init (&scaletempo->in_segment, GST_FORMAT_UNDEFINED);
   gst_segment_init (&scaletempo->out_segment, GST_FORMAT_UNDEFINED);
+  scaletempo->reinit_buffers = TRUE;
 
   return TRUE;
 }
@@ -718,6 +735,7 @@ gst_scaletempo_stop (GstBaseTransform * trans)
   scaletempo->buf_pre_corr = NULL;
   g_free (scaletempo->table_window);
   scaletempo->table_window = NULL;
+  scaletempo->reinit_buffers = TRUE;
 
   return TRUE;
 }
@@ -864,12 +882,10 @@ gst_scaletempo_class_init (GstScaletempoClass * klass)
           "Length in milliseconds to search for best overlap position", 0, 500,
           14, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class, &src_template);
+  gst_element_class_add_static_pad_template (gstelement_class, &sink_template);
   gst_element_class_set_static_metadata (gstelement_class, "Scaletempo",
-      "Filter/Effect/Rate",
+      "Filter/Effect/Rate/Audio",
       "Sync audio tempo with playback rate",
       "Rov Juvano <rovjuvano@users.sourceforge.net>");
 

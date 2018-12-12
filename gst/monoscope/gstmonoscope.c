@@ -104,10 +104,8 @@ gst_monoscope_class_init (GstMonoscopeClass * klass)
   gstelement_class->change_state =
       GST_DEBUG_FUNCPTR (gst_monoscope_change_state);
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class, &src_template);
+  gst_element_class_add_static_pad_template (gstelement_class, &sink_template);
   gst_element_class_set_static_metadata (gstelement_class, "Monoscope",
       "Visualization",
       "Displays a highly stabilised waveform of audio input",
@@ -165,6 +163,7 @@ gst_monoscope_reset (GstMonoscope * monoscope)
 
   gst_adapter_clear (monoscope->adapter);
   gst_segment_init (&monoscope->segment, GST_FORMAT_UNDEFINED);
+  monoscope->segment_pending = FALSE;
 
   GST_OBJECT_LOCK (monoscope);
   monoscope->proportion = 1.0;
@@ -256,6 +255,10 @@ gst_monoscope_src_negotiate (GstMonoscope * monoscope)
   gst_structure_fixate_field_nearest_int (structure, "width", 320);
   gst_structure_fixate_field_nearest_int (structure, "height", 240);
   gst_structure_fixate_field_nearest_fraction (structure, "framerate", 25, 1);
+  if (gst_structure_has_field (structure, "pixel-aspect-ratio"))
+    gst_structure_fixate_field_nearest_fraction (structure,
+        "pixel-aspect-ratio", 1, 1);
+  target = gst_caps_fixate (target);
 
   gst_monoscope_src_setcaps (monoscope, target);
 
@@ -293,6 +296,7 @@ gst_monoscope_src_negotiate (GstMonoscope * monoscope)
   /* and activate */
   gst_buffer_pool_set_active (pool, TRUE);
 
+  gst_query_unref (query);
   gst_caps_unref (target);
 
   return TRUE;
@@ -314,8 +318,13 @@ ensure_negotiated (GstMonoscope * monoscope)
 
   /* we don't know an output format yet, pick one */
   if (reconfigure || !gst_pad_has_current_caps (monoscope->srcpad)) {
-    if (!gst_monoscope_src_negotiate (monoscope))
-      return GST_FLOW_NOT_NEGOTIATED;
+    if (!gst_monoscope_src_negotiate (monoscope)) {
+      gst_pad_mark_reconfigure (monoscope->srcpad);
+      if (GST_PAD_IS_FLUSHING (monoscope->srcpad))
+        return GST_FLOW_FLUSHING;
+      else
+        return GST_FLOW_NOT_NEGOTIATED;
+    }
   }
   return GST_FLOW_OK;
 }
@@ -339,6 +348,12 @@ gst_monoscope_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuf)
   if (flow_ret != GST_FLOW_OK) {
     gst_buffer_unref (inbuf);
     goto out;
+  }
+
+  if (monoscope->segment_pending) {
+    gst_pad_push_event (monoscope->srcpad,
+        gst_event_new_segment (&monoscope->segment));
+    monoscope->segment_pending = FALSE;
   }
 
   /* don't try to combine samples from discont buffer */
@@ -466,7 +481,12 @@ gst_monoscope_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
        * we can do QoS */
       gst_event_copy_segment (event, &monoscope->segment);
 
-      res = gst_pad_push_event (monoscope->srcpad, event);
+      /* We forward the event from the chain function after caps are
+       * negotiated. Otherwise we would potentially break the event order and
+       * send the segment event before the caps event */
+      monoscope->segment_pending = TRUE;
+      gst_event_unref (event);
+      res = TRUE;
       break;
     }
     case GST_EVENT_CAPS:

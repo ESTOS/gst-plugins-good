@@ -88,10 +88,10 @@ gst_rtp_vraw_depay_class_init (GstRtpVRawDepayClass * klass)
       gst_rtp_vraw_depay_process_packet;
   gstrtpbasedepayload_class->handle_event = gst_rtp_vraw_depay_handle_event;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_vraw_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_vraw_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_vraw_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_vraw_depay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP Raw Video depayloader", "Codec/Depayloader/Network/RTP",
@@ -409,8 +409,7 @@ gst_rtp_vraw_depay_process_packet (GstRTPBaseDepayload * depayload,
   /* remember header position */
   headers = payload;
 
-  gst_rtp_copy_meta (GST_ELEMENT_CAST (rtpvrawdepay), frame->buffer,
-      rtp->buffer, g_quark_from_static_string (GST_META_TAG_VIDEO_STR));
+  gst_rtp_copy_video_meta (rtpvrawdepay, frame->buffer, rtp->buffer);
 
   /* find data start */
   do {

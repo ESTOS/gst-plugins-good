@@ -67,10 +67,10 @@ G_DEFINE_TYPE (GstRTPSirenDepay, gst_rtp_siren_depay,
   gstrtpbasedepayload_class->process_rtp_packet = gst_rtp_siren_depay_process;
   gstrtpbasedepayload_class->set_caps = gst_rtp_siren_depay_setcaps;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_siren_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_siren_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_siren_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_siren_depay_sink_template);
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP Siren packet depayloader", "Codec/Depayloader/Network/RTP",
       "Extracts Siren audio from RTP packets",
@@ -111,8 +111,7 @@ gst_rtp_siren_depay_process (GstRTPBaseDepayload * depayload,
   outbuf = gst_rtp_buffer_get_payload_buffer (rtp);
 
   if (outbuf) {
-    gst_rtp_drop_meta (GST_ELEMENT_CAST (depayload), outbuf,
-        g_quark_from_static_string (GST_META_TAG_AUDIO_STR));
+    gst_rtp_drop_non_audio_meta (depayload, outbuf);
   }
 
   return outbuf;

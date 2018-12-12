@@ -80,10 +80,10 @@ gst_rtp_sv3v_depay_class_init (GstRtpSV3VDepayClass * klass)
 
   gstelement_class->change_state = gst_rtp_sv3v_depay_change_state;
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_sv3v_depay_src_template));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_rtp_sv3v_depay_sink_template));
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_sv3v_depay_src_template);
+  gst_element_class_add_static_pad_template (gstelement_class,
+      &gst_rtp_sv3v_depay_sink_template);
 
   gst_element_class_set_static_metadata (gstelement_class,
       "RTP SVQ3 depayloader", "Codec/Depayloader/Network/RTP",
@@ -265,8 +265,7 @@ gst_rtp_sv3v_depay_process (GstRTPBaseDepayload * depayload, GstRTPBuffer * rtp)
       avail = gst_adapter_available (rtpsv3vdepay->adapter);
       GST_DEBUG ("Returning completed output buffer [%d bytes]", avail);
       outbuf = gst_adapter_take_buffer (rtpsv3vdepay->adapter, avail);
-      gst_rtp_drop_meta (GST_ELEMENT_CAST (rtpsv3vdepay), outbuf,
-          g_quark_from_static_string (GST_META_TAG_VIDEO_STR));
+      gst_rtp_drop_non_video_meta (rtpsv3vdepay, outbuf);
     }
   }
 
