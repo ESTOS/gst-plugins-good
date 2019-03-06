@@ -62,7 +62,7 @@ gst_vpx_dec_post_processing_flags_get_type (void)
     {C_FLAGS (VP8_DEBLOCK), "Deblock", "deblock"},
     {C_FLAGS (VP8_DEMACROBLOCK), "Demacroblock", "demacroblock"},
     {C_FLAGS (VP8_ADDNOISE), "Add noise", "addnoise"},
-#ifndef HAVE_VPX_1_8
+#ifdef HAVE_VPX_1_8
     {C_FLAGS (VP8_DEBUG_TXT_FRAME_INFO),
           "Print frame information",
         "visualize-frame-info"},
