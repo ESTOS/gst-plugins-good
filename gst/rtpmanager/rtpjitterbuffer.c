@@ -158,6 +158,7 @@ void
 rtp_jitter_buffer_set_mode (RTPJitterBuffer * jbuf, RTPJitterBufferMode mode)
 {
   jbuf->mode = mode;
+  GST_DEBUG ("mode %d ", (gint) mode);
 }
 
 GstClockTime
