@@ -86,6 +86,11 @@ struct _GstUDPSrc {
   /* permitted remote address */
   gchar     *remote_address;
   gint      remote_port;
+  gboolean  remote_block;
+
+  guint16 last_seqnr;
+  GstClockTime last_timestamp;
+  gboolean logrxrtp;
 };
 
 struct _GstUDPSrcClass {

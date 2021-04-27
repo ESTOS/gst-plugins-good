@@ -435,6 +435,7 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
 #define UDP_DEFAULT_RETRIEVE_SENDER_ADDRESS TRUE
 #define UDP_DEFAULT_REMOTE_ADDRESS     NULL
 #define UDP_DEFAULT_REMOTE_PORT        0
+#define UDP_DEFAULT_REMOTE_BLOCK       FALSE
 
 enum
 {
@@ -457,12 +458,15 @@ enum
   PROP_LOOP,
   PROP_RETRIEVE_SENDER_ADDRESS,
   PROP_REMOTE_ADDRESS,
-  PROP_REMOTE_PORT
+  PROP_REMOTE_PORT,
+  PROP_REMOTE_BLOCK
 };
 
 static void gst_udpsrc_uri_handler_init (gpointer g_iface, gpointer iface_data);
 static gboolean gst_udpsrc_is_sender_permitted (GstUDPSrc * src,
     GSocketAddress * saddr);
+static void dump_mem (GstUDPSrc * src, const guchar * mem, guint size);
+static void gst_udpsrc_dump_buffer (GstUDPSrc * src, GstBuffer * buf);
 
 static GstCaps *gst_udpsrc_getcaps (GstBaseSrc * src, GstCaps * filter);
 static GstFlowReturn gst_udpsrc_create (GstPushSrc * psrc, GstBuffer ** buf);
@@ -617,6 +621,11 @@ gst_udpsrc_class_init (GstUDPSrcClass * klass)
       g_param_spec_int ("remote-port", "RemotePort",
           "The port to receive the remote packets from", 0, G_MAXUINT16,
           UDP_DEFAULT_REMOTE_PORT, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_REMOTE_BLOCK,
+      g_param_spec_boolean ("remote-block", "BlockRemote",
+          "Switch Blocking of remote packets",
+          UDP_DEFAULT_REMOTE_BLOCK,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_add_static_pad_template (gstelement_class, &src_template);
 
@@ -659,6 +668,16 @@ gst_udpsrc_init (GstUDPSrc * udpsrc)
   udpsrc->retrieve_sender_address = UDP_DEFAULT_RETRIEVE_SENDER_ADDRESS;
   udpsrc->remote_address = UDP_DEFAULT_REMOTE_ADDRESS;
   udpsrc->remote_port = UDP_DEFAULT_REMOTE_PORT;
+  udpsrc->remote_block = UDP_DEFAULT_REMOTE_BLOCK;
+  udpsrc->last_seqnr = 0;
+  udpsrc->last_timestamp = GST_CLOCK_TIME_NONE;
+  {
+    const gchar *gflags_string = g_getenv ("G_MESSAGES_DEBUG");
+    if (gflags_string && strstr (gflags_string, "udpsrcrxrtp"))
+      udpsrc->logrxrtp = TRUE;
+    else
+      udpsrc->logrxrtp = FALSE;
+  }
 
   /* configure basesrc to be a live source */
   gst_base_src_set_live (GST_BASE_SRC (udpsrc), TRUE);
@@ -952,6 +971,12 @@ retry:
 
   if (saddr && !gst_udpsrc_is_sender_permitted (udpsrc, saddr)) //RTCSP-480 ru-bu
   {
+    if (p_msgs) {
+      for (i = 0; i < n_msgs; i++) {
+        g_object_unref (msgs[i]);
+      }
+      g_free (msgs);
+    }
     goto retry;
   }
 
@@ -1045,6 +1070,8 @@ retry:
   }
 
   GST_LOG_OBJECT (udpsrc, "read packet of %d bytes", (int) res);
+
+  gst_udpsrc_dump_buffer (udpsrc, outbuf);
 
   *buf = GST_BUFFER_CAST (outbuf);
 
@@ -1235,6 +1262,10 @@ gst_udpsrc_set_property (GObject * object, guint prop_id, const GValue * value,
     case PROP_REMOTE_PORT:     //RTCSP-480 ru-bu
       udpsrc->remote_port = g_value_get_int (value);
       break;
+    case PROP_REMOTE_BLOCK:    //RTCSP-1871 ru-bu
+      udpsrc->remote_block = g_value_get_boolean (value);
+      GST_INFO_OBJECT (udpsrc, "PROP_REMOTE_BLOCK:%d", udpsrc->remote_block);
+      break;
     default:
       break;
   }
@@ -1300,6 +1331,9 @@ gst_udpsrc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_REMOTE_PORT:
       g_value_set_int (value, udpsrc->remote_port);
+      break;
+    case PROP_REMOTE_BLOCK:
+      g_value_set_boolean (value, udpsrc->remote_block);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1812,7 +1846,10 @@ gst_udpsrc_is_sender_permitted (GstUDPSrc * src, GSocketAddress * saddr)
   gchar *ip = 0;
   gboolean ret = TRUE;
 
-  if (src->remote_address == UDP_DEFAULT_REMOTE_ADDRESS ||
+  if (src->remote_block == TRUE)
+    return FALSE;               //RTCSP-1871 block allways
+
+  if (src->remote_address == UDP_DEFAULT_REMOTE_ADDRESS &&
       src->remote_port == UDP_DEFAULT_REMOTE_PORT)
     return TRUE;                //no filteraddress
 
@@ -1832,4 +1869,79 @@ gst_udpsrc_is_sender_permitted (GstUDPSrc * src, GSocketAddress * saddr)
   g_free (ip);
 
   return ret;
+}
+
+//from gstreamer/gst/gstutils.c
+static void
+dump_mem (GstUDPSrc * src, const guchar * mem, guint size)
+{
+  guint i, j;
+#define ANZLOGBYTES 48
+  GString *string = g_string_sized_new ((ANZLOGBYTES * 3) + 10);
+
+  if (size >= 12 && mem[0] == 0x80) {
+    guint16 seqnr = 0;
+    GstClockTime timestamp = 0;
+    guint64 ssrc = 0;
+    GstClockTime diff;
+    seqnr =
+        (((guint64) ((guchar) mem[2])) << 8) + ((guint64) ((guchar) mem[3]));
+    timestamp =
+        (((guint64) ((guchar) mem[4])) << 24) +
+        (((guint64) ((guchar) mem[5])) << 16) +
+        (((guint64) ((guchar) mem[6])) << 8) + ((guint64) ((guchar) mem[7]));
+    ssrc =
+        (((guint64) ((guchar) mem[8])) << 24) +
+        (((guint64) ((guchar) mem[9])) << 16) +
+        (((guint64) ((guchar) mem[10])) << 8) + ((guint64) ((guchar) mem[11]));
+    if (!GST_CLOCK_TIME_IS_VALID (src->last_timestamp))
+      src->last_timestamp = timestamp;
+    diff = timestamp - src->last_timestamp;
+    GST_CAT_LEVEL_LOG (GST_CAT_DEFAULT, GST_LEVEL_MEMDUMP, src,
+        "(%p) Pt:%d SeqNr:%d time:%" G_GUINT64_FORMAT " %" GST_TIME_FORMAT
+        " ssrc:%" G_GUINT64_FORMAT " tdiff:%" G_GINT64_FORMAT "", mem,
+        mem[1] & 0x7f, seqnr, timestamp, GST_TIME_ARGS (timestamp), ssrc, diff);
+    src->last_seqnr = seqnr;
+    src->last_timestamp = timestamp;
+  }
+
+  i = j = 0;
+  while (i < size) {
+
+    g_string_append_printf (string, "%02x ", mem[i]);
+
+    j++;
+    i++;
+
+    if (j == ANZLOGBYTES || i == size) {
+      //3x48=144
+      GST_CAT_LEVEL_LOG (GST_CAT_DEFAULT, GST_LEVEL_MEMDUMP, src,
+          "(%p) %08x : %-144.144s", mem, i - j, string->str);
+      g_string_set_size (string, 0);
+      j = 0;
+    }
+  }
+  g_string_free (string, TRUE);
+}
+
+/**
+ * gst_util_dump_buffer:
+ * @buf: a #GstBuffer whose memory to dump
+ *
+ * Dumps the buffer memory into a hex representation. Useful for debugging.
+ *
+ * Since: 1.14
+ */
+static void
+gst_udpsrc_dump_buffer (GstUDPSrc * src, GstBuffer * buf)
+{
+  GstMapInfo map;
+
+  if (src->logrxrtp == FALSE)
+    return;
+
+  if (gst_buffer_map (buf, &map, GST_MAP_READ)) {
+    dump_mem (src, map.data, map.size);
+    gst_buffer_unmap (buf, &map);
+  }
 }

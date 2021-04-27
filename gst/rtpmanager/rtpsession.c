@@ -663,6 +663,16 @@ rtp_session_init (RTPSession * sess)
   sess->reduced_size_rtcp = DEFAULT_RTCP_REDUCED_SIZE;
 
   sess->is_doing_ptp = TRUE;
+
+  sess->last_seqnr = 0;
+  sess->last_timestamp = 0;
+  {
+    const gchar *gflags_string = g_getenv ("G_MESSAGES_DEBUG");
+    if (gflags_string && strstr (gflags_string, "rtpsessiontxrtp"))
+      sess->logtxrtp = TRUE;
+    else
+      sess->logtxrtp = FALSE;
+  }
 }
 
 static void
