@@ -1454,6 +1454,36 @@ gst_udpsrc_open (GstUDPSrc * src)
     if (!addr)
       goto name_resolve;
 
+    //RTCSP-1871 flush - reset socket buffer because it was open and still got data
+    {
+      gssize rcvbytes;
+      char buff[1024];
+      gsize readbytes = sizeof (buff);
+      gssize byteswaiting;
+      gint val = 0;
+      gint bytesread = 0;
+      if (!g_socket_get_option (src->used_socket, SOL_SOCKET, SO_RCVBUF, &val,
+              NULL)) {
+        val = 0x10000;          //65536
+      }
+
+      while (0 < (byteswaiting =
+              g_socket_get_available_bytes (src->used_socket))) {
+        rcvbytes =
+            g_socket_receive (src->used_socket, buff, readbytes, NULL, NULL);
+        if (rcvbytes <= 0) {
+          GST_LOG_OBJECT (src, "flush: 0x%x Bytes ret", bytesread);
+          break;
+        }
+        bytesread += rcvbytes;
+        if (bytesread >= val) {
+          GST_LOG_OBJECT (src, "flush: 0x%x Bytes exit", bytesread);
+          break;
+        }
+      }
+      GST_LOG_OBJECT (src, "flush: 0x%x Bytes", bytesread);
+    }
+
     /* If bound to ANY and address points to a multicast address, make
      * sure that address is not overridden with ANY but we have the
      * opportunity later to join the multicast address. This ensures that we
