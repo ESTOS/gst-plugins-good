@@ -3449,8 +3449,20 @@ pop_and_push_next (GstRtpJitterBuffer * jitterbuffer, guint seqnum)
       if (G_UNLIKELY (priv->discont)) {
         /* set DISCONT flag when we missed a packet. We pushed the buffer writable
          * into the jitterbuffer so we can modify now. */
-        GST_DEBUG_OBJECT (jitterbuffer, "mark output buffer discont");
-        GST_BUFFER_FLAG_SET (outbuf, GST_BUFFER_FLAG_DISCONT);
+        gboolean setmark = TRUE;
+        {                       //RTCSP-1871 dont send MARK if it is disturbing
+          const gchar *gflags_string = g_getenv ("ESTOS_DEBUG");
+          if (gflags_string && strstr (gflags_string, "nomark")) {
+            setmark = FALSE;
+          }
+        }
+        if (setmark == TRUE) {
+          GST_DEBUG_OBJECT (jitterbuffer, "mark output buffer discont");
+          GST_BUFFER_FLAG_SET (outbuf, GST_BUFFER_FLAG_DISCONT);
+        } else {
+          GST_DEBUG_OBJECT (jitterbuffer,
+              "force no mark output buffer discont");
+        }
         priv->discont = FALSE;
       }
       if (G_UNLIKELY (priv->ts_discont)) {
